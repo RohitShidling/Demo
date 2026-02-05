@@ -22,10 +22,10 @@ const startServer = async () => {
         await connectDB();
 
         // Start Express server
-        const server = app.listen(config.port, () => {
+        const server = app.listen(config.port, '0.0.0.0', () => {
             logger.info(`MES Backend Server started`);
             logger.info(`Environment: ${config.nodeEnv}`);
-            logger.info(`Port: ${config.port}`);
+            logger.info(`Address: http://0.0.0.0:${config.port}`);
             logger.info(`API Prefix: ${config.api.prefix}`);
             logger.info(`Server is ready to accept requests`);
         });

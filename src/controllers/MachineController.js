@@ -85,3 +85,12 @@ exports.getHistory = async (req, res, next) => {
         next(error);
     }
 };
+
+exports.getAllMachines = async (req, res, next) => {
+    try {
+        const data = await MachineService.getAllMachines();
+        res.json(data);
+    } catch (error) {
+        next(error);
+    }
+};

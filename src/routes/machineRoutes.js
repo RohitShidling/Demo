@@ -11,6 +11,7 @@ const upload = multer({
 
 // Machine Configuration
 router.post('/machines', upload.single('machine_image'), MachineController.createMachine);
+router.get('/machines', MachineController.getAllMachines);
 
 // Machine Operations
 // router.post('/machines/:machineId/stop', MachineController.stopMachine); 

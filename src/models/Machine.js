@@ -24,6 +24,13 @@ class MachineModel {
         const [rows] = await pool.execute(query, [machine_id]);
         return rows[0];
     }
+
+    static async findAll() {
+        const pool = getPool();
+        const query = `SELECT * FROM machines ORDER BY created_at DESC`;
+        const [rows] = await pool.execute(query);
+        return rows;
+    }
 }
 
 module.exports = MachineModel;

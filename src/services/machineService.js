@@ -104,6 +104,32 @@ class MachineService {
             run_id: h.run_id
         }));
     }
+
+    async getAllMachines() {
+        // Get all machines
+        const machines = await MachineModel.findAll();
+
+        // Enrich with current status (N+1 query is okay for small number of machines, 
+        // but for production maybe do a JOIN later. Keeping it simple as requested.)
+        const result = await Promise.all(machines.map(async (m) => {
+            const activeRun = await MachineRunModel.findActiveRun(m.machine_id);
+            return {
+                machine_id: m.machine_id,
+                machine_name: m.machine_name,
+                machine_image: m.machine_image ? m.machine_image.toString('base64') : null,
+                ingest_path: m.ingest_path,
+                // Status info
+                status: activeRun ? 'RUNNING' : 'STOPPED',
+                current_run: activeRun ? {
+                    start_time: activeRun.start_time,
+                    total_count: activeRun.total_count,
+                    last_activity: activeRun.last_activity_time
+                } : null
+            };
+        }));
+
+        return result;
+    }
 }
 
 module.exports = new MachineService();
