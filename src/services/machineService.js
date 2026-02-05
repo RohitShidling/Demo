@@ -1,126 +1,108 @@
-const Machine = require('../models/Machine');
+const MachineModel = require('../models/Machine');
+const MachineRunModel = require('../models/MachineRun');
+const HourlyProductionModel = require('../models/HourlyProduction');
 const logger = require('../utils/logger');
+const crypto = require('crypto');
 
 class MachineService {
-    /**
-     * Create a new machine
-     */
-    async createMachine(machineData) {
-        try {
-            const { machine_id, machine_image, start_time, count, end_time } = machineData;
+    async createMachine({ machine_name, ingest_path }, imageBuffer) {
+        // Generate unique ID (Format: MACH-XXXX)
+        const randomId = crypto.randomBytes(4).toString('hex').toUpperCase();
+        const machine_id = `MACH-${randomId}`;
 
-            // Check if machine already exists
-            const existingMachine = await Machine.findOne({ machine_id });
-            if (existingMachine) {
-                throw new Error('Machine with this ID already exists');
-            }
+        // Ensure path starts with slash
+        const normalizedPath = ingest_path.startsWith('/') ? ingest_path : `/${ingest_path}`;
 
-            const machine = new Machine({
-                machine_id,
-                machine_image: machine_image || null,
-                start_time: start_time || null,
-                count: count || 0,
-                end_time: end_time || null
+        await MachineModel.create({
+            machine_id,
+            machine_name,
+            machine_image: imageBuffer,
+            ingest_path: normalizedPath
+        });
+
+        logger.info(`Machine created: ${machine_id} with path ${normalizedPath}`);
+        return { machine_id, machine_name, ingest_path: normalizedPath };
+    }
+
+    async handleIngest(pathStr) {
+        // Find machine by path
+        const normalizedPath = pathStr.startsWith('/') ? pathStr : `/${pathStr}`;
+        const machine = await MachineModel.findByIngestPath(normalizedPath);
+
+        if (!machine) {
+            throw new Error(`Machine not found for path: ${normalizedPath}`);
+        }
+
+        const now = new Date();
+
+        // Check for active run
+        let run = await MachineRunModel.findActiveRun(machine.machine_id);
+        let isNewRun = false;
+
+        if (!run) {
+            // First hit creates a run -> Status RUNNING
+            logger.info(`Starting new run for ${machine.machine_id}`);
+            const runId = await MachineRunModel.create({
+                machine_id: machine.machine_id,
+                start_time: now
             });
-
-            await machine.save();
-            logger.info(`Machine created: ${machine_id}`);
-            return machine;
-        } catch (error) {
-            logger.error('Error creating machine:', error);
-            throw error;
+            run = { run_id: runId, start_time: now }; // Minimal obj
+            isNewRun = true;
         }
+
+        // Increment total run count
+        await MachineRunModel.incrementTotalCount(run.run_id, now);
+
+        // Handle Hourly Bucket
+        const bucket = await HourlyProductionModel.getOrCreateBucket(machine.machine_id, run.run_id, now);
+        await HourlyProductionModel.incrementCount(bucket.id);
+
+        return {
+            status: 'success',
+            machine_id: machine.machine_id,
+            run_id: run.run_id,
+            bucket_hour: bucket.hour_start_time
+        };
     }
 
-    /**
-     * Get machine by ID
-     */
-    async getMachineById(machine_id) {
-        try {
-            const machine = await Machine.findOne({ machine_id });
-            if (!machine) {
-                throw new Error('Machine not found');
-            }
-            return machine;
-        } catch (error) {
-            logger.error('Error fetching machine:', error);
-            throw error;
+    async stopMachine(machine_id) {
+        const run = await MachineRunModel.findActiveRun(machine_id);
+        if (!run) {
+            throw new Error('No active run found for machine');
         }
+
+        await MachineRunModel.stopRun(run.run_id, new Date());
+        logger.info(`Run ${run.run_id} stopped for machine ${machine_id}`);
+        return { status: 'stopped', run_id: run.run_id };
     }
 
-    /**
-     * Get all machines
-     */
-    async getAllMachines() {
-        try {
-            const machines = await Machine.find().sort({ createdAt: -1 });
-            return machines;
-        } catch (error) {
-            logger.error('Error fetching machines:', error);
-            throw error;
-        }
+    async getDashboard(machine_id) {
+        const machine = await MachineModel.findById(machine_id);
+        if (!machine) throw new Error('Machine not found');
+
+        const activeRun = await MachineRunModel.findActiveRun(machine_id);
+
+        return {
+            machine_id: machine.machine_id,
+            machine_name: machine.machine_name,
+            machine_image: machine.machine_image ? machine.machine_image.toString('base64') : null,
+            status: activeRun ? 'RUNNING' : 'STOPPED',
+            current_run: activeRun ? {
+                start_time: activeRun.start_time,
+                total_count: activeRun.total_count,
+                last_activity: activeRun.last_activity_time
+            } : null
+        };
     }
 
-    /**
-     * Update machine
-     */
-    async updateMachine(machine_id, updateData) {
-        try {
-            const machine = await Machine.findOne({ machine_id });
-            if (!machine) {
-                throw new Error('Machine not found');
-            }
-
-            // Update fields if provided
-            if (updateData.machine_image !== undefined) {
-                machine.machine_image = updateData.machine_image;
-            }
-            if (updateData.start_time !== undefined) {
-                machine.start_time = updateData.start_time;
-            }
-            if (updateData.count !== undefined) {
-                machine.count = updateData.count;
-            }
-            if (updateData.end_time !== undefined) {
-                machine.end_time = updateData.end_time;
-            }
-
-            await machine.save();
-            logger.info(`Machine updated: ${machine_id}`);
-            return machine;
-        } catch (error) {
-            logger.error('Error updating machine:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Update machine image
-     */
-    async updateMachineImage(machine_id, imagePath) {
-        try {
-            return await this.updateMachine(machine_id, { machine_image: imagePath });
-        } catch (error) {
-            logger.error('Error updating machine image:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Delete machine
-     */
-    async deleteMachine(machine_id) {
-        try {
-            const machine = await Machine.findOneAndDelete({ machine_id });
-            if (!machine) {
-                throw new Error('Machine not found');
-            }
-            logger.info(`Machine deleted: ${machine_id}`);
-            return machine;
-        } catch (error) {
-            logger.error('Error deleting machine:', error);
-            throw error;
-        }
+    async getHistory(machine_id) {
+        const history = await HourlyProductionModel.getHistory(machine_id);
+        return history.map(h => ({
+            hour_start: h.hour_start_time,
+            hour_end: h.hour_end_time,
+            count: h.product_count,
+            run_id: h.run_id
+        }));
     }
 }
 

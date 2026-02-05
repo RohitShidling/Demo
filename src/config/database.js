@@ -6,7 +6,6 @@ let pool;
 
 const connectDB = async () => {
     try {
-        // First connect without DB to check/create it
         const connection = await mysql.createConnection({
             host: config.mysql.host,
             user: config.mysql.user,
@@ -17,7 +16,6 @@ const connectDB = async () => {
         await connection.query(`CREATE DATABASE IF NOT EXISTS \`${config.mysql.database}\`;`);
         await connection.end();
 
-        // Now connect to the specific database
         pool = mysql.createPool({
             host: config.mysql.host,
             user: config.mysql.user,
@@ -29,7 +27,6 @@ const connectDB = async () => {
             queueLimit: 0
         });
 
-        // Initialize Tables
         await initTables();
 
         logger.info(`MySQL Connected: ${config.mysql.host}`);
@@ -40,51 +37,47 @@ const connectDB = async () => {
 };
 
 const initTables = async () => {
-    const tableQuery = `
-    CREATE TABLE IF NOT EXISTS production_logs (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        machine_id VARCHAR(50) NOT NULL,
-        machine_name VARCHAR(100) NOT NULL,
-        machine_image LONGBLOB,
-        start_time BIGINT,
-        end_time BIGINT,
-        production_count INT DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-    `;
-    // Note: Used BIGINT for timestamps to store milliseconds if needed, or DATETIME. 
-    // User requested "timestamp" which usually means UNIX timestamp or Date object. 
-    // JS Date.now() is ms (BIGINT). MySQL TIMESTAMP is standard. 
-    // Let's use DATETIME or BIGINT. BIGINT is safer for raw JS timestamps.
-    // User said "start_time (timestamp when the machine starts)".
-    // Let's stick to BIGINT for easy math or DATETIME.
-    // Revised: DATETIME is more readable in DB. I'll use DATETIME.
-    // Wait, user requirements: "start_time (timestamp when the machine starts)".
-    // I will use DATETIME(3) for ms precision.
-
-    const tableQueryUpdated = `
-    CREATE TABLE IF NOT EXISTS production_logs (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        machine_id VARCHAR(50) NOT NULL,
-        machine_name VARCHAR(100) NOT NULL,
-        machine_image LONGBLOB,
-        start_time DATETIME(3),
-        end_time DATETIME(3),
-        production_count INT DEFAULT 0,
-        created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
-        updated_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
-    );
-    `;
-
     try {
-        await pool.query(tableQueryUpdated);
-        // Migration helper: Try to add column if it doesn't exist (for existing tables)
-        try {
-            await pool.query(`ALTER TABLE production_logs ADD COLUMN updated_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)`);
-        } catch (e) {
-            // Ignore if column already exists
-        }
-        logger.info('Database tables initialized');
+        // Table 1: Machines (Configuration)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS machines (
+                machine_id VARCHAR(50) PRIMARY KEY,
+                machine_name VARCHAR(100) NOT NULL,
+                machine_image LONGBLOB,
+                ingest_path VARCHAR(100) UNIQUE NOT NULL,
+                created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3)
+            )
+        `);
+
+        // Table 2: Machine Runs (Sessions)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS machine_runs (
+                run_id INT AUTO_INCREMENT PRIMARY KEY,
+                machine_id VARCHAR(50) NOT NULL,
+                start_time DATETIME(3) NOT NULL,
+                end_time DATETIME(3),
+                status ENUM('RUNNING', 'STOPPED') DEFAULT 'RUNNING',
+                total_count INT DEFAULT 0,
+                last_activity_time DATETIME(3),
+                FOREIGN KEY (machine_id) REFERENCES machines(machine_id)
+            )
+        `);
+
+        // Table 3: Hourly Production (Buckets)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS hourly_production (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                machine_id VARCHAR(50) NOT NULL,
+                run_id INT NOT NULL,
+                hour_start_time DATETIME(3) NOT NULL,
+                hour_end_time DATETIME(3) NOT NULL,
+                product_count INT DEFAULT 0,
+                FOREIGN KEY (machine_id) REFERENCES machines(machine_id),
+                FOREIGN KEY (run_id) REFERENCES machine_runs(run_id)
+            )
+        `);
+
+        logger.info('Database tables (machines, runs, hourly_production) initialized');
     } catch (error) {
         logger.error('Error initializing tables:', error);
         throw error;

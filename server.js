@@ -21,15 +21,6 @@ const startServer = async () => {
         // Connect to MySQL
         await connectDB();
 
-        // Schedule Hourly Rotation
-        const cron = require('node-cron');
-        const ProductionService = require('./src/services/ProductionService');
-
-        cron.schedule('0 * * * *', () => {
-            logger.info('Executing hourly log rotation job');
-            ProductionService.rotateHourlyLogs();
-        });
-
         // Start Express server
         const server = app.listen(config.port, () => {
             logger.info(`MES Backend Server started`);

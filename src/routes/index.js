@@ -1,11 +1,15 @@
 const express = require('express');
 const router = express.Router();
-const productionRoutes = require('./productionRoutes');
+const machineRoutes = require('./machineRoutes');
 
-/**
- * Mount route modules
- */
-router.use('/production', productionRoutes);
+// Mount all machine related routes at root /api (or keep nested?)
+// Config says prefix is /api.
+// Current routes in machineRoutes:
+// POST /machines
+// POST /ingest/:pathId
+// GET /machines/:id/dashboard...
+
+router.use('/', machineRoutes);
 
 /**
  * Health check endpoint
@@ -13,7 +17,7 @@ router.use('/production', productionRoutes);
 router.get('/health', (req, res) => {
     res.status(200).json({
         success: true,
-        message: 'MES Backend API is running',
+        message: 'MES Backend API v2',
         timestamp: new Date().toISOString()
     });
 });
