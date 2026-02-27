@@ -1,7 +1,10 @@
+const http = require('http');
+const { Server } = require('socket.io');
 const app = require('./src/app');
 const { connectDB, disconnectDB } = require('./src/config/database');
 const config = require('./src/config/env');
 const logger = require('./src/utils/logger');
+const machineSocketHandler = require('./src/socketHandlers/machineSocketHandler');
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
@@ -21,18 +24,57 @@ const startServer = async () => {
         // Connect to MySQL
         await connectDB();
 
-        // Start Express server
-        const server = app.listen(config.port, '0.0.0.0', () => {
+        // Create HTTP server from Express app
+        const server = http.createServer(app);
+
+        // ──────────────────────────────────────────────
+        // Initialize Socket.IO
+        // ──────────────────────────────────────────────
+        const io = new Server(server, {
+            cors: {
+                origin: '*',          // Allow all origins (match Express CORS config)
+                methods: ['GET', 'POST'],
+                credentials: true
+            },
+            // Transport configuration
+            transports: ['websocket', 'polling'],
+            // Ping/pong settings (keep connections alive)
+            pingTimeout: 60000,
+            pingInterval: 25000
+        });
+
+        // Register socket handlers
+        machineSocketHandler(io);
+
+        // Make io accessible in Express app (for REST endpoints to emit events if needed)
+        app.set('io', io);
+
+        // Log active connections count periodically
+        setInterval(() => {
+            io.of('/machines').fetchSockets().then(sockets => {
+                logger.debug(`[Socket.IO] Active connections on /machines: ${sockets.length}`);
+            });
+        }, 60000); // Every minute
+
+        // ──────────────────────────────────────────────
+        // Start listening
+        // ──────────────────────────────────────────────
+        server.listen(config.port, '0.0.0.0', () => {
             logger.info(`MES Backend Server started`);
             logger.info(`Environment: ${config.nodeEnv}`);
-            logger.info(`Address: http://0.0.0.0:${config.port}`);
-            logger.info(`API Prefix: ${config.api.prefix}`);
-            logger.info(`Server is ready to accept requests`);
+            logger.info(`HTTP API:    http://0.0.0.0:${config.port}`);
+            logger.info(`Socket.IO:   ws://0.0.0.0:${config.port}/machines`);
+            logger.info(`API Prefix:  ${config.api.prefix}`);
+            logger.info(`Server is ready to accept HTTP and WebSocket requests`);
         });
 
         // Graceful shutdown
         const gracefulShutdown = async (signal) => {
             logger.info(`${signal} received. Starting graceful shutdown...`);
+
+            // Close all socket connections
+            io.of('/machines').disconnectSockets(true);
+            logger.info('All Socket.IO connections closed');
 
             server.close(async () => {
                 logger.info('HTTP server closed');
