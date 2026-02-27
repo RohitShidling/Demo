@@ -10,7 +10,7 @@ const upload = multer({
 });
 
 // Machine Configuration
-router.post('/machines', upload.single('machine_image'), MachineController.createMachine);
+router.post('/machines', upload.any(), MachineController.createMachine);
 router.get('/machines', MachineController.getAllMachines);
 
 // Machine Operations

@@ -11,7 +11,10 @@ const errorHandler = (err, req, res, next) => {
         message: err.message,
         stack: err.stack,
         path: req.path,
-        method: req.method
+        method: req.method,
+        // Add field info if available (Multer errors)
+        field: err.field,
+        code: err.code
     });
 
     // Mongoose validation error
@@ -45,14 +48,20 @@ const errorHandler = (err, req, res, next) => {
     }
 
     // Multer file upload errors
+    // Multer file upload errors
     if (err.name === 'MulterError') {
         if (err.code === 'LIMIT_FILE_SIZE') {
             return res.status(HTTP_STATUS.BAD_REQUEST).json(
                 errorResponse(ERROR_MESSAGES.FILE_TOO_LARGE, HTTP_STATUS.BAD_REQUEST)
             );
         }
+        if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+            return res.status(HTTP_STATUS.BAD_REQUEST).json(
+                errorResponse(`Unexpected field: ${err.field || 'unknown'}. Expected 'machine_image'.`, HTTP_STATUS.BAD_REQUEST)
+            );
+        }
         return res.status(HTTP_STATUS.BAD_REQUEST).json(
-            errorResponse(err.message, HTTP_STATUS.BAD_REQUEST)
+            errorResponse(`Upload Error: ${err.message}`, HTTP_STATUS.BAD_REQUEST)
         );
     }
 

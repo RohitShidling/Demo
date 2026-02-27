@@ -49,6 +49,18 @@ class MachineRunModel {
         const [rows] = await pool.execute(query, [run_id]);
         return rows[0];
     }
+
+    static async findLastRun(machine_id) {
+        const pool = getPool();
+        const query = `
+            SELECT * FROM machine_runs 
+            WHERE machine_id = ? 
+            ORDER BY start_time DESC 
+            LIMIT 1
+        `;
+        const [rows] = await pool.execute(query, [machine_id]);
+        return rows[0];
+    }
 }
 
 module.exports = MachineRunModel;

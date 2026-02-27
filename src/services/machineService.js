@@ -113,6 +113,13 @@ class MachineService {
         // but for production maybe do a JOIN later. Keeping it simple as requested.)
         const result = await Promise.all(machines.map(async (m) => {
             const activeRun = await MachineRunModel.findActiveRun(m.machine_id);
+
+            // If no active run, get the last stopped run
+            let lastRun = activeRun;
+            if (!activeRun) {
+                lastRun = await MachineRunModel.findLastRun(m.machine_id);
+            }
+
             return {
                 machine_id: m.machine_id,
                 machine_name: m.machine_name,
@@ -123,8 +130,14 @@ class MachineService {
                 current_run: activeRun ? {
                     start_time: activeRun.start_time,
                     total_count: activeRun.total_count,
-                    last_activity: activeRun.last_activity_time
-                } : null
+                    last_activity_time: activeRun.last_activity_time,
+                    end_time: null
+                } : (lastRun ? {
+                    start_time: lastRun.start_time,
+                    total_count: lastRun.total_count,
+                    end_time: lastRun.end_time,
+                    last_activity_time: lastRun.last_activity_time
+                } : null)
             };
         }));
 

@@ -2,8 +2,10 @@ const MachineService = require('../services/MachineService');
 
 exports.createMachine = async (req, res, next) => {
     try {
+        // Create machine logic
         const { machine_name, ingest_path } = req.body;
-        const file = req.file;
+        // Handle file from upload.any() (req.files) or upload.single() (req.file)
+        const file = req.file || (req.files && req.files.length > 0 ? req.files[0] : null);
 
         if (!machine_name || !ingest_path) {
             return res.status(400).json({ message: 'machine_name and ingest_path are required' });
