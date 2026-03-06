@@ -1,9 +1,14 @@
 const MachineService = require('../services/machineService');
+const { authenticateSocket } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
 /**
  * Socket.IO Handler for Machine operations
- * Mirrors all REST API endpoints as socket events
+ * Uses JWT authentication for all connections
+ * 
+ * Connection: Client must provide JWT token via:
+ *   - socket.handshake.auth.token (recommended)
+ *   - socket.handshake.query.token (fallback)
  * 
  * Events (Client -> Server):
  *   machine:create       - Create a new machine
@@ -12,6 +17,8 @@ const logger = require('../utils/logger');
  *   machine:getHistory   - Get history for a specific machine
  *   machine:ingest       - Ingest data (trigger production count)
  *   machine:stop         - Stop a machine run
+ *   machine:subscribe    - Subscribe to a specific machine's updates
+ *   machine:unsubscribe  - Unsubscribe from a specific machine's updates
  * 
  * Events (Server -> Client):
  *   machine:created      - Machine was created successfully
@@ -28,8 +35,13 @@ module.exports = (io) => {
     // Namespace for machine operations
     const machineNamespace = io.of('/machines');
 
+    // ──────────────────────────────────────────────
+    // Apply JWT Authentication Middleware
+    // ──────────────────────────────────────────────
+    machineNamespace.use(authenticateSocket);
+
     machineNamespace.on('connection', (socket) => {
-        logger.info(`[Socket.IO] Client connected: ${socket.id}`);
+        logger.info(`[Socket.IO] Client connected: ${socket.id} (user: ${socket.user.username})`);
 
         // ──────────────────────────────────────────────
         // 1. CREATE MACHINE
@@ -70,7 +82,7 @@ module.exports = (io) => {
                     timestamp: new Date().toISOString()
                 });
 
-                logger.info(`[Socket.IO] Machine created: ${result.machine_id}`);
+                logger.info(`[Socket.IO] Machine created by ${socket.user.username}: ${result.machine_id}`);
             } catch (error) {
                 logger.error(`[Socket.IO] Error creating machine: ${error.message}`);
                 const errResponse = { success: false, error: { message: error.message } };
@@ -92,7 +104,7 @@ module.exports = (io) => {
                 if (typeof callback === 'function') callback(response);
                 socket.emit('machine:allMachines', response);
 
-                logger.info(`[Socket.IO] All machines fetched (${machines.length} machines)`);
+                logger.info(`[Socket.IO] All machines fetched by ${socket.user.username} (${machines.length} machines)`);
             } catch (error) {
                 logger.error(`[Socket.IO] Error fetching machines: ${error.message}`);
                 const errResponse = { success: false, error: { message: error.message } };
@@ -202,7 +214,7 @@ module.exports = (io) => {
                     logger.error(`[Socket.IO] Broadcast error after ingest: ${broadcastErr.message}`);
                 }
 
-                logger.info(`[Socket.IO] Ingest processed for path: ${lookupPath}`);
+                logger.info(`[Socket.IO] Ingest processed by ${socket.user.username} for path: ${lookupPath}`);
             } catch (error) {
                 logger.error(`[Socket.IO] Error processing ingest: ${error.message}`);
                 const errResponse = { success: false, error: { message: error.message } };
@@ -235,16 +247,22 @@ module.exports = (io) => {
 
                 // ★ REAL-TIME BROADCAST ★
                 // Broadcast machine stop event to ALL connected clients
-                machineNamespace.emit('machine:update', {
-                    event: 'machine_stopped',
-                    data: {
-                        machine_id: machineId,
-                        ...result
-                    },
-                    timestamp: new Date().toISOString()
-                });
+                try {
+                    const dashboard = await MachineService.getDashboard(machineId);
+                    machineNamespace.emit('machine:update', {
+                        event: 'machine_stopped',
+                        data: {
+                            machine_id: machineId,
+                            ...result,
+                            dashboard: dashboard
+                        },
+                        timestamp: new Date().toISOString()
+                    });
+                } catch (broadcastErr) {
+                    logger.error(`[Socket.IO] Broadcast error after stop: ${broadcastErr.message}`);
+                }
 
-                logger.info(`[Socket.IO] Machine stopped: ${machineId}`);
+                logger.info(`[Socket.IO] Machine stopped by ${socket.user.username}: ${machineId}`);
             } catch (error) {
                 logger.error(`[Socket.IO] Error stopping machine: ${error.message}`);
                 const errResponse = { success: false, error: { message: error.message } };
@@ -261,7 +279,7 @@ module.exports = (io) => {
             const { machineId } = data || {};
             if (machineId) {
                 socket.join(`machine:${machineId}`);
-                logger.info(`[Socket.IO] Client ${socket.id} subscribed to machine: ${machineId}`);
+                logger.info(`[Socket.IO] ${socket.user.username} subscribed to machine: ${machineId}`);
                 socket.emit('machine:subscribed', { machineId, message: `Subscribed to updates for machine ${machineId}` });
             }
         });
@@ -274,7 +292,7 @@ module.exports = (io) => {
             const { machineId } = data || {};
             if (machineId) {
                 socket.leave(`machine:${machineId}`);
-                logger.info(`[Socket.IO] Client ${socket.id} unsubscribed from machine: ${machineId}`);
+                logger.info(`[Socket.IO] ${socket.user.username} unsubscribed from machine: ${machineId}`);
                 socket.emit('machine:unsubscribed', { machineId, message: `Unsubscribed from updates for machine ${machineId}` });
             }
         });
@@ -283,10 +301,10 @@ module.exports = (io) => {
         // DISCONNECT
         // ──────────────────────────────────────────────
         socket.on('disconnect', (reason) => {
-            logger.info(`[Socket.IO] Client disconnected: ${socket.id}, reason: ${reason}`);
+            logger.info(`[Socket.IO] Client disconnected: ${socket.id} (user: ${socket.user.username}), reason: ${reason}`);
         });
     });
 
-    logger.info('[Socket.IO] Machine socket handler initialized on /machines namespace');
+    logger.info('[Socket.IO] Machine socket handler initialized on /machines namespace (JWT protected)');
     return machineNamespace;
 };

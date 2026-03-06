@@ -6,6 +6,7 @@ let pool;
 
 const connectDB = async () => {
     try {
+        // First create database if it doesn't exist
         const connection = await mysql.createConnection({
             host: config.mysql.host,
             user: config.mysql.user,
@@ -16,6 +17,7 @@ const connectDB = async () => {
         await connection.query(`CREATE DATABASE IF NOT EXISTS \`${config.mysql.database}\`;`);
         await connection.end();
 
+        // Create connection pool
         pool = mysql.createPool({
             host: config.mysql.host,
             user: config.mysql.user,
@@ -27,18 +29,40 @@ const connectDB = async () => {
             queueLimit: 0
         });
 
+        // Initialize all tables
         await initTables();
 
-        logger.info(`MySQL Connected: ${config.mysql.host}`);
+        logger.info(`MySQL Connected: ${config.mysql.host}:${config.mysql.port}/${config.mysql.database}`);
     } catch (error) {
-        logger.error(`Error: ${error.message}`);
+        logger.error(`Database connection error: ${error.message}`);
         process.exit(1);
     }
 };
 
 const initTables = async () => {
     try {
-        // Table 1: Machines (Configuration)
+        // ─────────────────────────────────────────────────
+        // Table 1: Users (Authentication)
+        // ─────────────────────────────────────────────────
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(50) UNIQUE NOT NULL,
+                email VARCHAR(100) UNIQUE NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                full_name VARCHAR(100) NOT NULL,
+                role ENUM('admin', 'operator', 'viewer') DEFAULT 'operator',
+                is_active BOOLEAN DEFAULT TRUE,
+                last_login DATETIME(3),
+                refresh_token TEXT,
+                created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
+                updated_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+            )
+        `);
+
+        // ─────────────────────────────────────────────────
+        // Table 2: Machines (Configuration)
+        // ─────────────────────────────────────────────────
         await pool.query(`
             CREATE TABLE IF NOT EXISTS machines (
                 machine_id VARCHAR(50) PRIMARY KEY,
@@ -49,7 +73,9 @@ const initTables = async () => {
             )
         `);
 
-        // Table 2: Machine Runs (Sessions)
+        // ─────────────────────────────────────────────────
+        // Table 3: Machine Runs (Sessions)
+        // ─────────────────────────────────────────────────
         await pool.query(`
             CREATE TABLE IF NOT EXISTS machine_runs (
                 run_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -63,7 +89,9 @@ const initTables = async () => {
             )
         `);
 
-        // Table 3: Hourly Production (Buckets)
+        // ─────────────────────────────────────────────────
+        // Table 4: Hourly Production (Buckets)
+        // ─────────────────────────────────────────────────
         await pool.query(`
             CREATE TABLE IF NOT EXISTS hourly_production (
                 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -77,7 +105,7 @@ const initTables = async () => {
             )
         `);
 
-        logger.info('Database tables (machines, runs, hourly_production) initialized');
+        logger.info('Database tables initialized: users, machines, machine_runs, hourly_production');
     } catch (error) {
         logger.error('Error initializing tables:', error);
         throw error;
@@ -87,7 +115,7 @@ const initTables = async () => {
 const disconnectDB = async () => {
     if (pool) {
         await pool.end();
-        logger.info('MySQL connection closed');
+        logger.info('MySQL connection pool closed');
     }
 };
 

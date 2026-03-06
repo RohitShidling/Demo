@@ -10,50 +10,77 @@ const logger = require('./utils/logger');
 
 const app = express();
 
-// Security middleware
+// ─────────────────────────────────────────────────
+// Security Middleware
+// ─────────────────────────────────────────────────
 app.use(helmet());
 
-// CORS configuration
+// ─────────────────────────────────────────────────
+// CORS Configuration
+// ─────────────────────────────────────────────────
 app.use(cors({
-    origin: '*', // Configure this based on your frontend URL in production
-    credentials: true
+    origin: config.cors.origin,
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Body parsing middleware
-app.use(express.json());
+// ─────────────────────────────────────────────────
+// Body Parsing Middleware
+// ─────────────────────────────────────────────────
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// HTTP request logging
+// ─────────────────────────────────────────────────
+// HTTP Request Logging
+// ─────────────────────────────────────────────────
 if (config.nodeEnv === 'development') {
     app.use(morgan('dev'));
 } else {
     app.use(morgan('combined'));
 }
 
-// Static file serving for uploads
+// ─────────────────────────────────────────────────
+// Static File Serving
+// ─────────────────────────────────────────────────
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
-// API routes
+// ─────────────────────────────────────────────────
+// API Routes
+// ─────────────────────────────────────────────────
 app.use(config.api.prefix, routes);
 
-// Root endpoint
+// ─────────────────────────────────────────────────
+// Root Endpoint
+// ─────────────────────────────────────────────────
 app.get('/', (req, res) => {
     res.json({
         success: true,
         message: 'MES Backend API',
-        version: '1.0.0',
+        version: '2.0.0',
         endpoints: {
             health: `${config.api.prefix}/health`,
+            auth: {
+                register: `${config.api.prefix}/auth/register`,
+                login: `${config.api.prefix}/auth/login`,
+                logout: `${config.api.prefix}/auth/logout`,
+                refresh: `${config.api.prefix}/auth/refresh`,
+                profile: `${config.api.prefix}/auth/me`
+            },
             machines: `${config.api.prefix}/machines`,
-            executions: `${config.api.prefix}/executions`
+            ingest: `${config.api.prefix}/ingest/:pathId`
         }
     });
 });
 
-// 404 handler
+// ─────────────────────────────────────────────────
+// 404 Handler
+// ─────────────────────────────────────────────────
 app.use(notFoundHandler);
 
-// Global error handler (must be last)
+// ─────────────────────────────────────────────────
+// Global Error Handler (must be last)
+// ─────────────────────────────────────────────────
 app.use(errorHandler);
 
 module.exports = app;

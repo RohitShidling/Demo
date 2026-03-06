@@ -1,19 +1,21 @@
 const express = require('express');
 const router = express.Router();
+const authRoutes = require('./authRoutes');
 const machineRoutes = require('./machineRoutes');
 
-// Mount all machine related routes at root /api (or keep nested?)
-// Config says prefix is /api.
-// Current routes in machineRoutes:
-// POST /machines
-// POST /ingest/:pathId
-// GET /machines/:id/dashboard...
+// ─────────────────────────────────────────────────
+// Auth Routes: /api/auth/*
+// ─────────────────────────────────────────────────
+router.use('/auth', authRoutes);
 
+// ─────────────────────────────────────────────────
+// Machine Routes: /api/machines/*, /api/ingest/*
+// ─────────────────────────────────────────────────
 router.use('/', machineRoutes);
 
-/**
- * Health check endpoint
- */
+// ─────────────────────────────────────────────────
+// Health Check (public, no auth required)
+// ─────────────────────────────────────────────────
 router.get('/health', (req, res) => {
     res.status(200).json({
         success: true,
