@@ -4,137 +4,93 @@ const logger = require('../utils/logger');
 
 /**
  * JWT Authentication Middleware
- * Verifies the access token from Authorization header
- * Sets req.user with decoded token payload
+ * Supports both business and operator user types
  */
 const authenticate = (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
-
         if (!authHeader) {
-            return res.status(401).json({
-                success: false,
-                message: 'Access denied. No token provided.'
-            });
+            return res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
         }
-
-        // Expect format: "Bearer <token>"
         if (!authHeader.startsWith('Bearer ')) {
-            return res.status(401).json({
-                success: false,
-                message: 'Access denied. Invalid token format. Use: Bearer <token>'
-            });
+            return res.status(401).json({ success: false, message: 'Invalid token format. Use: Bearer <token>' });
         }
 
         const token = authHeader.split(' ')[1];
-
         if (!token) {
-            return res.status(401).json({
-                success: false,
-                message: 'Access denied. Token is empty.'
-            });
+            return res.status(401).json({ success: false, message: 'Token is empty.' });
         }
 
-        // Verify token
         const decoded = jwt.verify(token, config.jwt.secret);
-
-        // Attach user info to request
         req.user = {
             id: decoded.id,
             username: decoded.username,
             email: decoded.email,
-            role: decoded.role
+            role: decoded.role,
+            userType: decoded.userType || 'business'
         };
-
         next();
     } catch (error) {
         if (error.name === 'TokenExpiredError') {
-            return res.status(401).json({
-                success: false,
-                message: 'Token expired. Please refresh your token or login again.'
-            });
+            return res.status(401).json({ success: false, message: 'Token expired.' });
         }
-
         if (error.name === 'JsonWebTokenError') {
-            return res.status(401).json({
-                success: false,
-                message: 'Invalid token.'
-            });
+            return res.status(401).json({ success: false, message: 'Invalid token.' });
         }
-
-        logger.error('Authentication error:', error);
-        return res.status(500).json({
-            success: false,
-            message: 'Authentication error.'
-        });
+        logger.error('Auth error:', error);
+        return res.status(500).json({ success: false, message: 'Authentication error.' });
     }
 };
 
 /**
- * Role-based Authorization Middleware
- * Must be used AFTER authenticate middleware
- * @param  {...string} roles - Allowed roles
+ * Role-based Authorization
  */
 const authorize = (...roles) => {
     return (req, res, next) => {
-        if (!req.user) {
-            return res.status(401).json({
-                success: false,
-                message: 'Authentication required.'
-            });
-        }
-
+        if (!req.user) return res.status(401).json({ success: false, message: 'Authentication required.' });
         if (!roles.includes(req.user.role)) {
-            logger.warn(`Authorization failed: User ${req.user.username} (role: ${req.user.role}) tried to access resource requiring roles: [${roles.join(', ')}]`);
-            return res.status(403).json({
-                success: false,
-                message: 'Access denied. Insufficient permissions.'
-            });
+            return res.status(403).json({ success: false, message: 'Access denied. Insufficient permissions.' });
         }
+        next();
+    };
+};
 
+/**
+ * User type authorization (business or operator)
+ */
+const authorizeUserType = (...types) => {
+    return (req, res, next) => {
+        if (!req.user) return res.status(401).json({ success: false, message: 'Authentication required.' });
+        if (!types.includes(req.user.userType)) {
+            return res.status(403).json({ success: false, message: `Access denied. Required user type: ${types.join(' or ')}` });
+        }
         next();
     };
 };
 
 /**
  * Socket.IO Authentication Middleware
- * Verifies JWT from socket handshake auth or query
  */
 const authenticateSocket = (socket, next) => {
     try {
-        // Try to get token from auth object first, then from query params
         const token = socket.handshake.auth?.token || socket.handshake.query?.token;
-
-        if (!token) {
-            return next(new Error('Authentication required. Provide token in auth.token or query.token'));
-        }
+        if (!token) return next(new Error('Authentication required'));
 
         const decoded = jwt.verify(token, config.jwt.secret);
-
-        // Attach user info to socket
         socket.user = {
             id: decoded.id,
             username: decoded.username,
             email: decoded.email,
-            role: decoded.role
+            role: decoded.role,
+            userType: decoded.userType || 'business'
         };
-
-        logger.info(`[Socket.IO] Authenticated user: ${decoded.username} (socket: ${socket.id})`);
+        logger.info(`[Socket.IO] Authenticated: ${decoded.username} (${decoded.userType || 'business'})`);
         next();
     } catch (error) {
-        if (error.name === 'TokenExpiredError') {
-            return next(new Error('Token expired. Please refresh your token.'));
-        }
-        if (error.name === 'JsonWebTokenError') {
-            return next(new Error('Invalid token.'));
-        }
-        logger.error('[Socket.IO] Auth error:', error);
-        return next(new Error('Authentication failed.'));
+        if (error.name === 'TokenExpiredError') return next(new Error('Token expired'));
+        if (error.name === 'JsonWebTokenError') return next(new Error('Invalid token'));
+        return next(new Error('Authentication failed'));
     }
 };
 
-module.exports = {
-    authenticate,
-    authorize,
-    authenticateSocket
-};
+module.exports = { authenticate, authorize, authorizeUserType, authenticateSocket };

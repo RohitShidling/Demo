@@ -10,23 +10,22 @@ const upload = multer({
     limits: { fileSize: config.upload.maxFileSize }
 });
 
-// ─────────────────────────────────────────────────
-// All machine routes require authentication
-// ─────────────────────────────────────────────────
+router.use(authenticate);
 
-// Machine Configuration
-router.post('/machines', authenticate, upload.any(), MachineController.createMachine);
-router.get('/machines', authenticate, MachineController.getAllMachines);
+// Machine CRUD
+router.post('/machines', upload.any(), MachineController.createMachine);
+router.get('/machines', MachineController.getAllMachines);
+
+// Machine Details & Visualization
+router.get('/machines/:machineId/details', MachineController.getMachineDetails);
+router.get('/machines/:machineId/visualization', MachineController.getMachineVisualization);
+router.get('/machines/:machineId/dashboard', MachineController.getDashboard);
+router.get('/machines/:machineId/history', MachineController.getHistory);
 
 // Machine Operations
-router.post('/machines/:machineId/stop', authenticate, MachineController.stopMachine);
+router.post('/machines/:machineId/stop', MachineController.stopMachine);
 
-// Data Retrieval
-router.get('/machines/:machineId/dashboard', authenticate, MachineController.getDashboard);
-router.get('/machines/:machineId/history', authenticate, MachineController.getHistory);
-
-// Ingest API (The event-driven part)
-// Note: Ingest is also protected - only authenticated users/systems can push data
-router.post('/ingest/:pathId', authenticate, MachineController.handleIngest);
+// Ingest API
+router.post('/ingest/:pathId', MachineController.handleIngest);
 
 module.exports = router;

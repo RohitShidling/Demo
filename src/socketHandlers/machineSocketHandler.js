@@ -1,310 +1,221 @@
 const MachineService = require('../services/machineService');
+const OperatorService = require('../services/operatorService');
+const AlertService = require('../services/alertService');
+const WorkOrderService = require('../services/workOrderService');
+const WorkflowService = require('../services/workflowService');
 const { authenticateSocket } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
-/**
- * Socket.IO Handler for Machine operations
- * Uses JWT authentication for all connections
- * 
- * Connection: Client must provide JWT token via:
- *   - socket.handshake.auth.token (recommended)
- *   - socket.handshake.query.token (fallback)
- * 
- * Events (Client -> Server):
- *   machine:create       - Create a new machine
- *   machine:getAll       - Get all machines
- *   machine:getDashboard - Get dashboard for a specific machine
- *   machine:getHistory   - Get history for a specific machine
- *   machine:ingest       - Ingest data (trigger production count)
- *   machine:stop         - Stop a machine run
- *   machine:subscribe    - Subscribe to a specific machine's updates
- *   machine:unsubscribe  - Unsubscribe from a specific machine's updates
- * 
- * Events (Server -> Client):
- *   machine:created      - Machine was created successfully
- *   machine:allMachines  - All machines list response
- *   machine:dashboard    - Dashboard data response
- *   machine:history      - History data response
- *   machine:ingested     - Ingest was processed successfully
- *   machine:stopped      - Machine was stopped successfully
- *   machine:update       - Real-time broadcast: machine data changed
- *   machine:error        - Error occurred
- */
-
 module.exports = (io) => {
-    // Namespace for machine operations
-    const machineNamespace = io.of('/machines');
+    const ns = io.of('/machines');
+    ns.use(authenticateSocket);
 
-    // ──────────────────────────────────────────────
-    // Apply JWT Authentication Middleware
-    // ──────────────────────────────────────────────
-    machineNamespace.use(authenticateSocket);
+    ns.on('connection', (socket) => {
+        logger.info(`[Socket.IO] Connected: ${socket.id} (${socket.user.username}, ${socket.user.userType || socket.user.role})`);
 
-    machineNamespace.on('connection', (socket) => {
-        logger.info(`[Socket.IO] Client connected: ${socket.id} (user: ${socket.user.username})`);
-
-        // ──────────────────────────────────────────────
-        // 1. CREATE MACHINE
-        // Mirrors: POST /api/machines
-        // Payload: { machine_name: string, ingest_path: string, machine_image?: base64string }
-        // ──────────────────────────────────────────────
-        socket.on('machine:create', async (data, callback) => {
-            try {
-                const { machine_name, ingest_path, machine_image } = data || {};
-
-                if (!machine_name || !ingest_path) {
-                    const error = { message: 'machine_name and ingest_path are required' };
-                    if (typeof callback === 'function') return callback({ success: false, error });
-                    return socket.emit('machine:error', error);
-                }
-
-                // Convert base64 image to Buffer if provided
-                let imageBuffer = null;
-                if (machine_image) {
-                    imageBuffer = Buffer.from(machine_image, 'base64');
-                }
-
-                const result = await MachineService.createMachine(
-                    { machine_name, ingest_path },
-                    imageBuffer
-                );
-
-                const response = { success: true, data: result };
-
-                // Acknowledge to sender
-                if (typeof callback === 'function') callback(response);
-                socket.emit('machine:created', response);
-
-                // Broadcast to all clients that a new machine was added
-                machineNamespace.emit('machine:update', {
-                    event: 'machine_created',
-                    data: result,
-                    timestamp: new Date().toISOString()
-                });
-
-                logger.info(`[Socket.IO] Machine created by ${socket.user.username}: ${result.machine_id}`);
-            } catch (error) {
-                logger.error(`[Socket.IO] Error creating machine: ${error.message}`);
-                const errResponse = { success: false, error: { message: error.message } };
-                if (typeof callback === 'function') return callback(errResponse);
-                socket.emit('machine:error', errResponse);
-            }
-        });
-
-        // ──────────────────────────────────────────────
-        // 2. GET ALL MACHINES
-        // Mirrors: GET /api/machines
-        // Payload: none
-        // ──────────────────────────────────────────────
-        socket.on('machine:getAll', async (data, callback) => {
+        // ── MACHINE OPERATIONS ──
+        socket.on('machine:getAll', async (data, cb) => {
             try {
                 const machines = await MachineService.getAllMachines();
-                const response = { success: true, data: machines };
-
-                if (typeof callback === 'function') callback(response);
-                socket.emit('machine:allMachines', response);
-
-                logger.info(`[Socket.IO] All machines fetched by ${socket.user.username} (${machines.length} machines)`);
-            } catch (error) {
-                logger.error(`[Socket.IO] Error fetching machines: ${error.message}`);
-                const errResponse = { success: false, error: { message: error.message } };
-                if (typeof callback === 'function') return callback(errResponse);
-                socket.emit('machine:error', errResponse);
-            }
+                const res = { success: true, data: machines };
+                if (typeof cb === 'function') cb(res);
+                socket.emit('machine:allMachines', res);
+            } catch (e) { emitError(socket, cb, e); }
         });
 
-        // ──────────────────────────────────────────────
-        // 3. GET DASHBOARD
-        // Mirrors: GET /api/machines/:machineId/dashboard
-        // Payload: { machineId: string }
-        // ──────────────────────────────────────────────
-        socket.on('machine:getDashboard', async (data, callback) => {
+        socket.on('machine:getDashboard', async (data, cb) => {
             try {
                 const { machineId } = data || {};
-
-                if (!machineId) {
-                    const error = { message: 'machineId is required' };
-                    if (typeof callback === 'function') return callback({ success: false, error });
-                    return socket.emit('machine:error', error);
-                }
-
+                if (!machineId) return emitError(socket, cb, { message: 'machineId required' });
                 const dashboard = await MachineService.getDashboard(machineId);
-                const response = { success: true, data: dashboard };
-
-                if (typeof callback === 'function') callback(response);
-                socket.emit('machine:dashboard', response);
-
-                logger.info(`[Socket.IO] Dashboard fetched for machine: ${machineId}`);
-            } catch (error) {
-                logger.error(`[Socket.IO] Error fetching dashboard: ${error.message}`);
-                const errResponse = { success: false, error: { message: error.message } };
-                if (typeof callback === 'function') return callback(errResponse);
-                socket.emit('machine:error', errResponse);
-            }
+                const res = { success: true, data: dashboard };
+                if (typeof cb === 'function') cb(res);
+                socket.emit('machine:dashboard', res);
+            } catch (e) { emitError(socket, cb, e); }
         });
 
-        // ──────────────────────────────────────────────
-        // 4. GET HISTORY
-        // Mirrors: GET /api/machines/:machineId/history
-        // Payload: { machineId: string }
-        // ──────────────────────────────────────────────
-        socket.on('machine:getHistory', async (data, callback) => {
+        socket.on('machine:getDetails', async (data, cb) => {
             try {
                 const { machineId } = data || {};
-
-                if (!machineId) {
-                    const error = { message: 'machineId is required' };
-                    if (typeof callback === 'function') return callback({ success: false, error });
-                    return socket.emit('machine:error', error);
-                }
-
-                const history = await MachineService.getHistory(machineId);
-                const response = { success: true, data: history };
-
-                if (typeof callback === 'function') callback(response);
-                socket.emit('machine:history', response);
-
-                logger.info(`[Socket.IO] History fetched for machine: ${machineId}`);
-            } catch (error) {
-                logger.error(`[Socket.IO] Error fetching history: ${error.message}`);
-                const errResponse = { success: false, error: { message: error.message } };
-                if (typeof callback === 'function') return callback(errResponse);
-                socket.emit('machine:error', errResponse);
-            }
+                if (!machineId) return emitError(socket, cb, { message: 'machineId required' });
+                const details = await MachineService.getMachineDetails(machineId);
+                const res = { success: true, data: details };
+                if (typeof cb === 'function') cb(res);
+                socket.emit('machine:details', res);
+            } catch (e) { emitError(socket, cb, e); }
         });
 
-        // ──────────────────────────────────────────────
-        // 5. INGEST DATA (Trigger production count)
-        // Mirrors: POST /api/ingest/:pathId
-        // Payload: { pathId: string }
-        // ──────────────────────────────────────────────
-        socket.on('machine:ingest', async (data, callback) => {
+        socket.on('machine:getVisualization', async (data, cb) => {
+            try {
+                const { machineId, filter, start_date, end_date } = data || {};
+                if (!machineId) return emitError(socket, cb, { message: 'machineId required' });
+                const viz = await MachineService.getMachineVisualization(machineId, { filter, start_date, end_date });
+                const res = { success: true, data: viz };
+                if (typeof cb === 'function') cb(res);
+                socket.emit('machine:visualization', res);
+            } catch (e) { emitError(socket, cb, e); }
+        });
+
+        socket.on('machine:getHistory', async (data, cb) => {
+            try {
+                const { machineId } = data || {};
+                if (!machineId) return emitError(socket, cb, { message: 'machineId required' });
+                const history = await MachineService.getHistory(machineId);
+                const res = { success: true, data: history };
+                if (typeof cb === 'function') cb(res);
+                socket.emit('machine:history', res);
+            } catch (e) { emitError(socket, cb, e); }
+        });
+
+        socket.on('machine:create', async (data, cb) => {
+            try {
+                if (socket.user.role !== 'admin') return emitError(socket, cb, { message: 'Access denied' });
+                const { machine_name, ingest_path, machine_image } = data || {};
+                if (!machine_name || !ingest_path) return emitError(socket, cb, { message: 'machine_name and ingest_path required' });
+                let imageBuffer = machine_image ? Buffer.from(machine_image, 'base64') : null;
+                const result = await MachineService.createMachine({ machine_name, ingest_path }, imageBuffer);
+                const res = { success: true, data: result };
+                if (typeof cb === 'function') cb(res);
+                ns.emit('machine:update', { event: 'machine_created', data: result, timestamp: new Date().toISOString() });
+            } catch (e) { emitError(socket, cb, e); }
+        });
+
+        socket.on('machine:ingest', async (data, cb) => {
             try {
                 const { pathId } = data || {};
-
-                if (!pathId) {
-                    const error = { message: 'pathId is required' };
-                    if (typeof callback === 'function') return callback({ success: false, error });
-                    return socket.emit('machine:error', error);
-                }
-
-                const lookupPath = `/${pathId}`;
-                const result = await MachineService.handleIngest(lookupPath);
-                const response = { success: true, data: { status: 'received', ...result } };
-
-                // Acknowledge to sender
-                if (typeof callback === 'function') callback(response);
-                socket.emit('machine:ingested', response);
-
-                // ★ REAL-TIME BROADCAST ★
-                // After ingest, fetch the latest dashboard data and broadcast to ALL clients
+                if (!pathId) return emitError(socket, cb, { message: 'pathId required' });
+                const result = await MachineService.handleIngest(`/${pathId}`);
+                const res = { success: true, data: { status: 'received', ...result } };
+                if (typeof cb === 'function') cb(res);
                 try {
                     const dashboard = await MachineService.getDashboard(result.machine_id);
-                    machineNamespace.emit('machine:update', {
-                        event: 'ingest_received',
-                        data: {
-                            machine_id: result.machine_id,
-                            run_id: result.run_id,
-                            bucket_hour: result.bucket_hour,
-                            dashboard: dashboard
-                        },
-                        timestamp: new Date().toISOString()
-                    });
-                } catch (broadcastErr) {
-                    logger.error(`[Socket.IO] Broadcast error after ingest: ${broadcastErr.message}`);
-                }
-
-                logger.info(`[Socket.IO] Ingest processed by ${socket.user.username} for path: ${lookupPath}`);
-            } catch (error) {
-                logger.error(`[Socket.IO] Error processing ingest: ${error.message}`);
-                const errResponse = { success: false, error: { message: error.message } };
-                if (typeof callback === 'function') return callback(errResponse);
-                socket.emit('machine:error', errResponse);
-            }
+                    ns.emit('machine:update', { event: 'ingest_received', data: { ...result, dashboard }, timestamp: new Date().toISOString() });
+                } catch (e) { logger.error(`Broadcast error: ${e.message}`); }
+            } catch (e) { emitError(socket, cb, e); }
         });
 
-        // ──────────────────────────────────────────────
-        // 6. STOP MACHINE
-        // Mirrors: POST /api/machines/:machineId/stop
-        // Payload: { machineId: string }
-        // ──────────────────────────────────────────────
-        socket.on('machine:stop', async (data, callback) => {
+        socket.on('machine:stop', async (data, cb) => {
             try {
                 const { machineId } = data || {};
-
-                if (!machineId) {
-                    const error = { message: 'machineId is required' };
-                    if (typeof callback === 'function') return callback({ success: false, error });
-                    return socket.emit('machine:error', error);
-                }
-
+                if (!machineId) return emitError(socket, cb, { message: 'machineId required' });
                 const result = await MachineService.stopMachine(machineId);
-                const response = { success: true, data: result };
-
-                // Acknowledge to sender
-                if (typeof callback === 'function') callback(response);
-                socket.emit('machine:stopped', response);
-
-                // ★ REAL-TIME BROADCAST ★
-                // Broadcast machine stop event to ALL connected clients
-                try {
-                    const dashboard = await MachineService.getDashboard(machineId);
-                    machineNamespace.emit('machine:update', {
-                        event: 'machine_stopped',
-                        data: {
-                            machine_id: machineId,
-                            ...result,
-                            dashboard: dashboard
-                        },
-                        timestamp: new Date().toISOString()
-                    });
-                } catch (broadcastErr) {
-                    logger.error(`[Socket.IO] Broadcast error after stop: ${broadcastErr.message}`);
-                }
-
-                logger.info(`[Socket.IO] Machine stopped by ${socket.user.username}: ${machineId}`);
-            } catch (error) {
-                logger.error(`[Socket.IO] Error stopping machine: ${error.message}`);
-                const errResponse = { success: false, error: { message: error.message } };
-                if (typeof callback === 'function') return callback(errResponse);
-                socket.emit('machine:error', errResponse);
-            }
+                if (typeof cb === 'function') cb({ success: true, data: result });
+                const dashboard = await MachineService.getDashboard(machineId);
+                ns.emit('machine:update', { event: 'machine_stopped', data: { machine_id: machineId, ...result, dashboard }, timestamp: new Date().toISOString() });
+            } catch (e) { emitError(socket, cb, e); }
         });
 
-        // ──────────────────────────────────────────────
-        // 7. JOIN MACHINE ROOM (for targeted real-time updates)
-        // Payload: { machineId: string }
-        // ──────────────────────────────────────────────
+        // ── OPERATOR: Machine Status Update ──
+        socket.on('operator:updateStatus', async (data, cb) => {
+            try {
+                const { machine_id, status } = data || {};
+                if (!machine_id || !status) return emitError(socket, cb, { message: 'machine_id and status required' });
+                const result = await OperatorService.updateMachineStatus(machine_id, status);
+                if (typeof cb === 'function') cb({ success: true, data: result });
+                ns.emit('machine:status_changed', { machine_id, status, changed_by: socket.user.username, timestamp: new Date().toISOString() });
+            } catch (e) { emitError(socket, cb, e); }
+        });
+
+        // ── OPERATOR: Report Rejection ──
+        socket.on('operator:reportRejection', async (data, cb) => {
+            try {
+                const { machine_id, work_order_id, rejection_reason, part_image, rejected_count } = data || {};
+                if (!machine_id || !rejection_reason) return emitError(socket, cb, { message: 'machine_id and rejection_reason required' });
+                const imgBuf = part_image ? Buffer.from(part_image, 'base64') : null;
+                const result = await OperatorService.reportRejection({
+                    machine_id, work_order_id, operator_id: socket.user.id,
+                    rejection_reason, part_image: imgBuf, rejected_count: rejected_count || 1
+                });
+                if (typeof cb === 'function') cb({ success: true, data: result });
+                ns.emit('rejection:reported', { machine_id, work_order_id, operator: socket.user.username, timestamp: new Date().toISOString() });
+            } catch (e) { emitError(socket, cb, e); }
+        });
+
+        // ── OPERATOR: Report Breakdown ──
+        socket.on('operator:reportBreakdown', async (data, cb) => {
+            try {
+                const { machine_id, problem_description, severity } = data || {};
+                if (!machine_id || !problem_description) return emitError(socket, cb, { message: 'machine_id and problem_description required' });
+                const result = await OperatorService.reportBreakdown({ machine_id, operator_id: socket.user.id, problem_description, severity });
+                if (typeof cb === 'function') cb({ success: true, data: result });
+                ns.emit('breakdown:reported', { data: result, timestamp: new Date().toISOString() });
+                // Also emit alert update
+                const alerts = await AlertService.getAlerts();
+                ns.emit('alerts:updated', { data: alerts, timestamp: new Date().toISOString() });
+            } catch (e) { emitError(socket, cb, e); }
+        });
+
+        // ── ALERTS ──
+        socket.on('alerts:get', async (data, cb) => {
+            try {
+                const alerts = await AlertService.getAlerts();
+                const res = { success: true, data: alerts };
+                if (typeof cb === 'function') cb(res);
+                socket.emit('alerts:data', res);
+            } catch (e) { emitError(socket, cb, e); }
+        });
+
+        // ── WORK ORDERS ──
+        socket.on('workorder:getAll', async (data, cb) => {
+            try {
+                const orders = await WorkOrderService.getAllWorkOrders();
+                const res = { success: true, data: orders };
+                if (typeof cb === 'function') cb(res);
+                socket.emit('workorder:allOrders', res);
+            } catch (e) { emitError(socket, cb, e); }
+        });
+
+        socket.on('workorder:getMachines', async (data, cb) => {
+            try {
+                const { workOrderId } = data || {};
+                if (!workOrderId) return emitError(socket, cb, { message: 'workOrderId required' });
+                const result = await WorkOrderService.getWorkOrderMachines(workOrderId);
+                const res = { success: true, data: result };
+                if (typeof cb === 'function') cb(res);
+                socket.emit('workorder:machines', res);
+            } catch (e) { emitError(socket, cb, e); }
+        });
+
+        // ── WORKFLOW ──
+        socket.on('workflow:get', async (data, cb) => {
+            try {
+                const { workOrderId } = data || {};
+                if (!workOrderId) return emitError(socket, cb, { message: 'workOrderId required' });
+                const result = await WorkflowService.getWorkflow(workOrderId);
+                const res = { success: true, data: result };
+                if (typeof cb === 'function') cb(res);
+                socket.emit('workflow:data', res);
+            } catch (e) { emitError(socket, cb, e); }
+        });
+
+        // ── ROOM SUBSCRIPTIONS ──
         socket.on('machine:subscribe', (data) => {
             const { machineId } = data || {};
             if (machineId) {
                 socket.join(`machine:${machineId}`);
-                logger.info(`[Socket.IO] ${socket.user.username} subscribed to machine: ${machineId}`);
-                socket.emit('machine:subscribed', { machineId, message: `Subscribed to updates for machine ${machineId}` });
+                socket.emit('machine:subscribed', { machineId });
             }
         });
 
-        // ──────────────────────────────────────────────
-        // 8. LEAVE MACHINE ROOM
-        // Payload: { machineId: string }
-        // ──────────────────────────────────────────────
         socket.on('machine:unsubscribe', (data) => {
             const { machineId } = data || {};
             if (machineId) {
                 socket.leave(`machine:${machineId}`);
-                logger.info(`[Socket.IO] ${socket.user.username} unsubscribed from machine: ${machineId}`);
-                socket.emit('machine:unsubscribed', { machineId, message: `Unsubscribed from updates for machine ${machineId}` });
+                socket.emit('machine:unsubscribed', { machineId });
             }
         });
 
-        // ──────────────────────────────────────────────
-        // DISCONNECT
-        // ──────────────────────────────────────────────
         socket.on('disconnect', (reason) => {
-            logger.info(`[Socket.IO] Client disconnected: ${socket.id} (user: ${socket.user.username}), reason: ${reason}`);
+            logger.info(`[Socket.IO] Disconnected: ${socket.id} (${socket.user.username}), reason: ${reason}`);
         });
     });
 
-    logger.info('[Socket.IO] Machine socket handler initialized on /machines namespace (JWT protected)');
-    return machineNamespace;
+    logger.info('[Socket.IO] MES socket handler initialized on /machines namespace');
+    return ns;
 };
+
+function emitError(socket, cb, error) {
+    const errRes = { success: false, error: { message: error.message || 'Unknown error' } };
+    if (typeof cb === 'function') return cb(errRes);
+    socket.emit('machine:error', errRes);
+}
