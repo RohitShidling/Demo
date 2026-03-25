@@ -1,13 +1,13 @@
 const { getPool } = require('../config/database');
 
 class OperatorUserModel {
-    static async create({ username, email, password, full_name }) {
+    static async create({ username, email, password }) {
         const pool = getPool();
         const query = `
-            INSERT INTO operator_users (username, email, password, full_name, role)
-            VALUES (?, ?, ?, ?, 'operator')
+            INSERT INTO operator_users (username, email, password, role)
+            VALUES (?, ?, ?, 'operator')
         `;
-        const [result] = await pool.execute(query, [username, email, password, full_name]);
+        const [result] = await pool.execute(query, [username, email, password]);
         return result.insertId;
     }
 
@@ -27,7 +27,7 @@ class OperatorUserModel {
 
     static async findById(id) {
         const pool = getPool();
-        const query = `SELECT id, username, email, full_name, role, is_active, last_login, created_at, updated_at FROM operator_users WHERE id = ?`;
+        const query = `SELECT id, username, email, role, is_active, last_login, created_at, updated_at FROM operator_users WHERE id = ?`;
         const [rows] = await pool.execute(query, [id]);
         return rows[0];
     }
@@ -59,7 +59,7 @@ class OperatorUserModel {
 
     static async findAll() {
         const pool = getPool();
-        const query = `SELECT id, username, email, full_name, role, is_active, last_login, created_at, updated_at FROM operator_users ORDER BY created_at DESC`;
+        const query = `SELECT id, username, email, role, is_active, last_login, created_at, updated_at FROM operator_users ORDER BY created_at DESC`;
         const [rows] = await pool.execute(query);
         return rows;
     }

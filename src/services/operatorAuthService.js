@@ -19,7 +19,7 @@ class OperatorAuthService {
         );
     }
 
-    async register({ username, email, password, full_name }) {
+    async register({ username, email, password }) {
         const existingUsername = await OperatorUserModel.findByUsername(username);
         if (existingUsername) { const e = new Error('Username already exists'); e.statusCode = 409; throw e; }
         const existingEmail = await OperatorUserModel.findByEmail(email);
@@ -27,7 +27,7 @@ class OperatorAuthService {
 
         const salt = await bcrypt.genSalt(12);
         const hashedPassword = await bcrypt.hash(password, salt);
-        const userId = await OperatorUserModel.create({ username, email, password: hashedPassword, full_name });
+        const userId = await OperatorUserModel.create({ username, email, password: hashedPassword });
         const user = await OperatorUserModel.findById(userId);
         logger.info(`Operator registered: ${username}`);
         return { user, message: 'Operator registered successfully' };
@@ -47,7 +47,7 @@ class OperatorAuthService {
         logger.info(`Operator logged in: ${user.email}`);
 
         return {
-            user: { id: user.id, username: user.username, email: user.email, full_name: user.full_name, role: 'operator', userType: 'operator' },
+            user: { id: user.id, username: user.username, email: user.email, role: 'operator', userType: 'operator' },
             accessToken, refreshToken
         };
     }

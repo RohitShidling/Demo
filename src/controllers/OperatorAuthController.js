@@ -2,14 +2,14 @@ const OperatorAuthService = require('../services/operatorAuthService');
 
 exports.register = async (req, res, next) => {
     try {
-        const { username, email, password, full_name } = req.body;
-        if (!username || !email || !password || !full_name) {
-            return res.status(400).json({ success: false, message: 'username, email, password, and full_name are required' });
+        const { username, email, password } = req.body;
+        if (!username || !email || !password) {
+            return res.status(400).json({ success: false, message: 'username, email, and password are required' });
         }
         if (password.length < 6) {
             return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
         }
-        const result = await OperatorAuthService.register({ username, email, password, full_name });
+        const result = await OperatorAuthService.register({ username, email, password });
         res.status(201).json({ success: true, message: result.message, data: result.user });
     } catch (error) { next(error); }
 };

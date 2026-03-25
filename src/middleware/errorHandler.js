@@ -48,8 +48,17 @@ const errorHandler = (err, req, res, next) => {
     }
 
     // Multer file upload errors
-    // Multer file upload errors
-    if (err.name === 'MulterError') {
+    if (err.name === 'MulterError' || err.message === 'Malformed part header' || err.message === 'Multipart: Boundary not found') {
+        if (err.message === 'Malformed part header') {
+            return res.status(HTTP_STATUS.BAD_REQUEST).json(
+                errorResponse('Malformed part header. This is a known Postman issue. Solution: 1) Delete this request in Postman. 2) Create a new request. 3) Under Body -> form-data, re-type keys without spaces. 4) Do NOT manually set Content-Type header.', HTTP_STATUS.BAD_REQUEST)
+            );
+        }
+        if (err.message === 'Multipart: Boundary not found') {
+            return res.status(HTTP_STATUS.BAD_REQUEST).json(
+                errorResponse('Multipart boundary not found. If using Postman, DO NOT manually set the Content-Type header. Leave it unchecked so Postman auto-generates the boundary.', HTTP_STATUS.BAD_REQUEST)
+            );
+        }
         if (err.code === 'LIMIT_FILE_SIZE') {
             return res.status(HTTP_STATUS.BAD_REQUEST).json(
                 errorResponse(ERROR_MESSAGES.FILE_TOO_LARGE, HTTP_STATUS.BAD_REQUEST)

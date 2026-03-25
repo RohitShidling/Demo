@@ -1,46 +1,16 @@
 const { getPool } = require('../config/database');
 
 class ProductionLogModel {
-    static async create({ machine_id, machine_name, machine_image, start_time }) {
+    // Record production (new single source of truth)
+    static async create({ machine_id, work_order_id, produced_count, rejected_count }) {
         const pool = getPool();
         const query = `
-            INSERT INTO production_logs (machine_id, machine_name, machine_image, start_time)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO production_logs (machine_id, work_order_id, produced_count, rejected_count, status)
+            VALUES (?, ?, ?, ?, ?)
         `;
-        const [result] = await pool.execute(query, [machine_id, machine_name, machine_image, start_time]);
+        const status = rejected_count > 0 ? 'REJECTED' : 'GOOD';
+        const [result] = await pool.execute(query, [machine_id, work_order_id || null, produced_count || 0, rejected_count || 0, status]);
         return result.insertId;
-    }
-
-    static async updateCount(id, count) {
-        const pool = getPool();
-        const query = `
-            UPDATE production_logs 
-            SET production_count = ? 
-            WHERE id = ?
-        `;
-        await pool.execute(query, [count, id]);
-    }
-
-    static async updateEndTime(id, end_time) {
-        const pool = getPool();
-        const query = `
-            UPDATE production_logs 
-            SET end_time = ? 
-            WHERE id = ?
-        `;
-        await pool.execute(query, [end_time, id]);
-    }
-
-    static async getActiveLog(machine_id) {
-        const pool = getPool();
-        const query = `
-            SELECT * FROM production_logs 
-            WHERE machine_id = ? AND end_time IS NULL 
-            ORDER BY start_time DESC 
-            LIMIT 1
-        `;
-        const [rows] = await pool.execute(query, [machine_id]);
-        return rows[0];
     }
 
     static async getById(id) {
@@ -52,44 +22,62 @@ class ProductionLogModel {
 
     static async getByMachineId(machine_id) {
         const pool = getPool();
-        const query = `SELECT * FROM production_logs WHERE machine_id = ? ORDER BY start_time DESC`;
+        const query = `SELECT * FROM production_logs WHERE machine_id = ? ORDER BY recorded_at DESC`;
         const [rows] = await pool.execute(query, [machine_id]);
         return rows;
     }
 
-    // Helper to close previous hour's log if needed (for rotation service)
-    static async closeLogAndCreateNew(prevId, endTime, newLogData) {
+    static async getByWorkOrderId(work_order_id) {
         const pool = getPool();
-        const connection = await pool.getConnection();
-        try {
-            await connection.beginTransaction();
-
-            // Close old log
-            await connection.execute(
-                `UPDATE production_logs SET end_time = ? WHERE id = ?`,
-                [endTime, prevId]
-            );
-
-            // Create new log
-            const [result] = await connection.execute(
-                `INSERT INTO production_logs (machine_id, machine_name, machine_image, start_time) VALUES (?, ?, ?, ?)`,
-                [newLogData.machine_id, newLogData.machine_name, newLogData.machine_image, newLogData.start_time]
-            );
-
-            await connection.commit();
-            return result.insertId;
-        } catch (error) {
-            await connection.rollback();
-            throw error;
-        } finally {
-            connection.release();
-        }
+        const query = `SELECT * FROM production_logs WHERE work_order_id = ? ORDER BY recorded_at DESC`;
+        const [rows] = await pool.execute(query, [work_order_id]);
+        return rows;
     }
 
-    static async getAllActive() {
+    // Work Order Production Summary (aggregated from production_logs)
+    static async getWorkOrderSummary(work_order_id) {
         const pool = getPool();
-        const query = `SELECT * FROM production_logs WHERE end_time IS NULL`;
-        const [rows] = await pool.execute(query);
+        const query = `
+            SELECT 
+                wo.work_order_id,
+                wo.target,
+                COALESCE(SUM(pl.produced_count), 0) AS total_produced,
+                COALESCE(SUM(pl.rejected_count), 0) AS total_rejected,
+                (wo.target - COALESCE(SUM(pl.produced_count), 0)) AS remaining,
+                ROUND(
+                    (COALESCE(SUM(pl.produced_count), 0) / wo.target) * 100,
+                    2
+                ) AS completion_percentage
+            FROM work_orders wo
+            LEFT JOIN production_logs pl ON wo.work_order_id = pl.work_order_id
+            WHERE wo.work_order_id = ?
+            GROUP BY wo.work_order_id, wo.target
+        `;
+        const [rows] = await pool.execute(query, [work_order_id]);
+        return rows[0];
+    }
+
+    // Machine-wise breakdown for a work order
+    static async getMachineProductionForWorkOrder(work_order_id) {
+        const pool = getPool();
+        const query = `
+            SELECT 
+                pl.machine_id,
+                COALESCE(SUM(pl.produced_count), 0) AS produced,
+                COALESCE(SUM(pl.rejected_count), 0) AS rejected
+            FROM production_logs pl
+            WHERE pl.work_order_id = ?
+            GROUP BY pl.machine_id
+        `;
+        const [rows] = await pool.execute(query, [work_order_id]);
+        return rows;
+    }
+
+    // Get all logs
+    static async findAll(limit = 100) {
+        const pool = getPool();
+        const query = `SELECT * FROM production_logs ORDER BY recorded_at DESC LIMIT ?`;
+        const [rows] = await pool.execute(query, [limit]);
         return rows;
     }
 }

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const WorkOrderController = require('../controllers/WorkOrderController');
+const ProductionController = require('../controllers/ProductionController');
 const { authenticate } = require('../middleware/auth');
 
 // All routes require authentication
@@ -20,5 +21,10 @@ router.get('/:workOrderId/machines', WorkOrderController.getWorkOrderMachines);
 
 // Rejections per work order
 router.get('/:workOrderId/rejections', WorkOrderController.getWorkOrderRejections);
+
+// Production Summary APIs (from production_logs single source of truth)
+router.get('/:workOrderId/production-summary', ProductionController.getProductionSummary);
+router.get('/:workOrderId/machine-production', ProductionController.getMachineProduction);
+router.get('/:workOrderId/summary', ProductionController.getWorkOrderSummary);
 
 module.exports = router;

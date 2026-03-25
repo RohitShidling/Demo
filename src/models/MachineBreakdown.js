@@ -14,7 +14,7 @@ class MachineBreakdownModel {
     static async findById(id) {
         const pool = getPool();
         const query = `
-            SELECT mb.*, m.machine_name, ou.full_name as operator_name
+            SELECT mb.*, m.machine_name, ou.username as operator_name
             FROM machine_breakdowns mb
             JOIN machines m ON mb.machine_id = m.machine_id
             JOIN operator_users ou ON mb.operator_id = ou.id
@@ -27,7 +27,7 @@ class MachineBreakdownModel {
     static async findByMachine(machine_id) {
         const pool = getPool();
         const query = `
-            SELECT mb.*, ou.full_name as operator_name
+            SELECT mb.*, ou.username as operator_name
             FROM machine_breakdowns mb
             JOIN operator_users ou ON mb.operator_id = ou.id
             WHERE mb.machine_id = ?
@@ -40,7 +40,7 @@ class MachineBreakdownModel {
     static async findActive() {
         const pool = getPool();
         const query = `
-            SELECT mb.*, m.machine_name, m.machine_id, ou.full_name as operator_name
+            SELECT mb.*, m.machine_name, m.machine_id, ou.username as operator_name
             FROM machine_breakdowns mb
             JOIN machines m ON mb.machine_id = m.machine_id
             JOIN operator_users ou ON mb.operator_id = ou.id
@@ -72,7 +72,7 @@ class MachineBreakdownModel {
     static async findAll() {
         const pool = getPool();
         const query = `
-            SELECT mb.*, m.machine_name, ou.full_name as operator_name
+            SELECT mb.*, m.machine_name, ou.username as operator_name
             FROM machine_breakdowns mb
             JOIN machines m ON mb.machine_id = m.machine_id
             JOIN operator_users ou ON mb.operator_id = ou.id

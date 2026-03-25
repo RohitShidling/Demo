@@ -21,7 +21,7 @@ class MachineOperatorModel {
     static async findByMachine(machine_id) {
         const pool = getPool();
         const query = `
-            SELECT mo.*, ou.full_name as operator_name, ou.email as operator_email, ou.username as operator_username
+            SELECT mo.*, ou.username as operator_name, ou.email as operator_email, ou.username as operator_username
             FROM machine_operators mo
             JOIN operator_users ou ON mo.operator_id = ou.id
             WHERE mo.machine_id = ? AND mo.is_active = TRUE
@@ -47,7 +47,7 @@ class MachineOperatorModel {
     static async findAll() {
         const pool = getPool();
         const query = `
-            SELECT mo.*, m.machine_name, ou.full_name as operator_name, ou.email as operator_email
+            SELECT mo.*, m.machine_name, ou.username as operator_name, ou.email as operator_email
             FROM machine_operators mo
             JOIN machines m ON mo.machine_id = m.machine_id
             JOIN operator_users ou ON mo.operator_id = ou.id

@@ -27,7 +27,7 @@ class BusinessAuthService {
         );
     }
 
-    async register({ username, email, password, full_name }) {
+    async register({ username, email, password }) {
         const existingUsername = await BusinessUserModel.findByUsername(username);
         if (existingUsername) {
             const error = new Error('Username already exists');
@@ -48,8 +48,7 @@ class BusinessAuthService {
         const userId = await BusinessUserModel.create({
             username,
             email,
-            password: hashedPassword,
-            full_name
+            password: hashedPassword
         });
 
         const user = await BusinessUserModel.findById(userId);
@@ -92,7 +91,6 @@ class BusinessAuthService {
                 id: user.id,
                 username: user.username,
                 email: user.email,
-                full_name: user.full_name,
                 role: 'admin',
                 userType: 'business'
             },

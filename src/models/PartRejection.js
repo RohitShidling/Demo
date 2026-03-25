@@ -21,7 +21,7 @@ class PartRejectionModel {
     static async findByMachine(machine_id) {
         const pool = getPool();
         const query = `
-            SELECT pr.*, ou.full_name as operator_name 
+            SELECT pr.*, ou.username as operator_name 
             FROM part_rejections pr
             LEFT JOIN operator_users ou ON pr.operator_id = ou.id
             WHERE pr.machine_id = ? 
@@ -34,7 +34,7 @@ class PartRejectionModel {
     static async findByWorkOrder(work_order_id) {
         const pool = getPool();
         const query = `
-            SELECT pr.*, m.machine_name, ou.full_name as operator_name
+            SELECT pr.*, m.machine_name, ou.username as operator_name
             FROM part_rejections pr
             JOIN machines m ON pr.machine_id = m.machine_id
             LEFT JOIN operator_users ou ON pr.operator_id = ou.id
@@ -48,7 +48,7 @@ class PartRejectionModel {
     static async findByMachineAndWorkOrder(machine_id, work_order_id) {
         const pool = getPool();
         const query = `
-            SELECT pr.*, ou.full_name as operator_name
+            SELECT pr.*, ou.username as operator_name
             FROM part_rejections pr
             LEFT JOIN operator_users ou ON pr.operator_id = ou.id
             WHERE pr.machine_id = ? AND pr.work_order_id = ?
@@ -91,7 +91,7 @@ class PartRejectionModel {
     static async findAll() {
         const pool = getPool();
         const query = `
-            SELECT pr.*, m.machine_name, ou.full_name as operator_name
+            SELECT pr.*, m.machine_name, ou.username as operator_name
             FROM part_rejections pr
             JOIN machines m ON pr.machine_id = m.machine_id
             LEFT JOIN operator_users ou ON pr.operator_id = ou.id
