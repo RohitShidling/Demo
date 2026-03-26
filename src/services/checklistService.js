@@ -3,7 +3,7 @@ const MachineModel = require('../models/Machine');
 const logger = require('../utils/logger');
 
 class ChecklistService {
-    // Get checklist by machine ID
+    // Get checklist by machine ID (ordered)
     async getChecklistByMachineId(machine_id) {
         const machine = await MachineModel.findById(machine_id);
         if (!machine) { const e = new Error('Machine not found'); e.statusCode = 404; throw e; }
@@ -15,18 +15,46 @@ class ChecklistService {
             machine_id: machine.machine_id,
             machine_name: machine.machine_name,
             last_saved_on: lastSavedOn,
+            total_items: checklist.length,
+            completed_items: checklist.filter(i => i.status === 'OK').length,
+            pending_items: checklist.filter(i => i.status === 'PENDING').length,
             checklist_items: checklist
         };
     }
 
+    // Get all checklists (grouped by machine)
+    async getAllChecklists() {
+        const allItems = await MachineChecklistModel.findAll();
+
+        // Group by machine
+        const machineMap = {};
+        for (const item of allItems) {
+            if (!machineMap[item.machine_id]) {
+                machineMap[item.machine_id] = {
+                    machine_id: item.machine_id,
+                    machine_name: item.machine_name,
+                    checklist_items: []
+                };
+            }
+            machineMap[item.machine_id].checklist_items.push(item);
+        }
+
+        return Object.values(machineMap);
+    }
+
+    // Get checklist summary for all machines
+    async getChecklistSummary() {
+        return await MachineChecklistModel.getChecklistSummaryByMachine();
+    }
+
     // Create checklist item
-    async createChecklistItem({ machine_id, checkpoint, description, specification, method, image, timing, status, comments, checked_by }) {
+    async createChecklistItem({ machine_id, checkpoint, description, specification, method, image, timing, status, comments, checked_by, sort_order }) {
         const machine = await MachineModel.findById(machine_id);
         if (!machine) { const e = new Error('Machine not found'); e.statusCode = 404; throw e; }
 
         const id = await MachineChecklistModel.create({
             machine_id, checkpoint, description, specification, method,
-            image, timing, status, comments, checked_by
+            image, timing, status, comments, checked_by, sort_order
         });
 
         logger.info(`Checklist item created for machine ${machine_id}: ${checkpoint}`);
@@ -58,7 +86,8 @@ class ChecklistService {
         if (!machine) { const e = new Error('Machine not found'); e.statusCode = 404; throw e; }
 
         const results = [];
-        for (const item of items) {
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
             const id = await MachineChecklistModel.create({
                 machine_id,
                 checkpoint: item.checkpoint,
@@ -69,13 +98,37 @@ class ChecklistService {
                 timing: item.timing,
                 status: item.status || 'PENDING',
                 comments: item.comments,
-                checked_by: item.checked_by
+                checked_by: item.checked_by,
+                sort_order: item.sort_order !== undefined ? item.sort_order : i + 1
             });
             results.push(id);
         }
 
         logger.info(`${results.length} checklist items created for machine ${machine_id}`);
         return await MachineChecklistModel.findByMachineId(machine_id);
+    }
+
+    // Reorder checklist items for a machine
+    async reorderChecklist(machine_id, orderedIds) {
+        const machine = await MachineModel.findById(machine_id);
+        if (!machine) { const e = new Error('Machine not found'); e.statusCode = 404; throw e; }
+
+        if (!orderedIds || !Array.isArray(orderedIds) || orderedIds.length === 0) {
+            const e = new Error('orderedIds array is required');
+            e.statusCode = 400;
+            throw e;
+        }
+
+        await MachineChecklistModel.reorder(machine_id, orderedIds);
+        logger.info(`Checklist reordered for machine ${machine_id}: [${orderedIds.join(', ')}]`);
+        return await MachineChecklistModel.findByMachineId(machine_id);
+    }
+
+    // Get single checklist item by ID
+    async getChecklistItemById(id) {
+        const item = await MachineChecklistModel.findById(id);
+        if (!item) { const e = new Error('Checklist item not found'); e.statusCode = 404; throw e; }
+        return item;
     }
 }
 

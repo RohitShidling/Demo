@@ -3,6 +3,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./config/swagger');
 const config = require('./config/env');
 const routes = require('./routes');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
@@ -35,6 +37,34 @@ if (config.nodeEnv === 'development') {
 // Static File Serving
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
+// Swagger API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customCss: `
+        .swagger-ui .topbar { background-color: #1a1a2e; }
+        .swagger-ui .topbar .download-url-wrapper .select-label select { border-color: #e94560; }
+        .swagger-ui .info .title { color: #1a1a2e; }
+        .swagger-ui .btn.execute { background-color: #e94560; border-color: #e94560; }
+        .swagger-ui .btn.execute:hover { background-color: #c73e54; }
+        .swagger-ui .opblock.opblock-get .opblock-summary { border-color: #0f3460; }
+        .swagger-ui .opblock.opblock-post .opblock-summary { border-color: #16213e; }
+    `,
+    customSiteTitle: 'MES API Documentation',
+    swaggerOptions: {
+        persistAuthorization: true,
+        displayRequestDuration: true,
+        filter: true,
+        showExtensions: true,
+        docExpansion: 'none',
+        tagsSorter: 'alpha'
+    }
+}));
+
+// Swagger JSON endpoint
+app.get('/api-docs.json', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerSpec);
+});
+
 // API Routes
 app.use(config.api.prefix, routes);
 
@@ -44,8 +74,10 @@ app.get('/', (req, res) => {
         success: true,
         message: 'MES Backend API v4 - Manufacturing Execution System',
         version: '4.0.0',
+        api_documentation: '/api-docs',
         endpoints: {
             health: `${config.api.prefix}/health`,
+            api_docs: '/api-docs',
             business_auth: {
                 register: `${config.api.prefix}/business/auth/register  [POST: username, email, password]`,
                 login: `${config.api.prefix}/business/auth/login`,
@@ -69,7 +101,17 @@ app.get('/', (req, res) => {
                 record: `${config.api.prefix}/production`,
                 ingest: `${config.api.prefix}/production/ingest`
             },
-            checklist: `${config.api.prefix}/checklist/:machineId`,
+            checklist: {
+                all: `${config.api.prefix}/checklist`,
+                summary: `${config.api.prefix}/checklist/summary`,
+                by_machine: `${config.api.prefix}/checklist/:machineId`,
+                single_item: `${config.api.prefix}/checklist/item/:itemId`,
+                create: `${config.api.prefix}/checklist/:machineId [POST]`,
+                bulk_create: `${config.api.prefix}/checklist/:machineId/bulk [POST]`,
+                reorder: `${config.api.prefix}/checklist/:machineId/reorder [PUT]`,
+                update_item: `${config.api.prefix}/checklist/item/:itemId [PUT]`,
+                delete_item: `${config.api.prefix}/checklist/item/:itemId [DELETE]`
+            },
             workflows: `${config.api.prefix}/workflows/:workOrderId`,
             shifts: {
                 manage: `${config.api.prefix}/shifts`,

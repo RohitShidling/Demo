@@ -1,16 +1,26 @@
 const { getPool } = require('../config/database');
 
 class MachineChecklistModel {
-    static async create({ machine_id, checkpoint, description, specification, method, image, timing, status, comments, checked_by }) {
+    static async create({ machine_id, checkpoint, description, specification, method, image, timing, status, comments, checked_by, sort_order }) {
         const pool = getPool();
+
+        // If sort_order not provided, set to max+1 for this machine
+        if (sort_order === undefined || sort_order === null) {
+            const [maxRows] = await pool.execute(
+                `SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM machine_checklists WHERE machine_id = ?`,
+                [machine_id]
+            );
+            sort_order = maxRows[0].next_order;
+        }
+
         const query = `
-            INSERT INTO machine_checklists (machine_id, checkpoint, description, specification, method, image, timing, status, comments, checked_by)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO machine_checklists (machine_id, checkpoint, description, specification, method, image, timing, status, comments, checked_by, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
         const [result] = await pool.execute(query, [
             machine_id, checkpoint, description || null, specification || null,
             method || null, image || null, timing || null, status || 'PENDING',
-            comments || null, checked_by || null
+            comments || null, checked_by || null, sort_order
         ]);
         return result.insertId;
     }
@@ -37,7 +47,7 @@ class MachineChecklistModel {
             FROM machine_checklists mc
             JOIN machines m ON mc.machine_id = m.machine_id
             WHERE mc.machine_id = ?
-            ORDER BY mc.updated_at DESC
+            ORDER BY mc.sort_order ASC, mc.created_at ASC
         `;
         const [rows] = await pool.execute(query, [machine_id]);
         return rows.map(row => {
@@ -62,6 +72,7 @@ class MachineChecklistModel {
         if (updates.status !== undefined) { fields.push('status = ?'); values.push(updates.status); }
         if (updates.comments !== undefined) { fields.push('comments = ?'); values.push(updates.comments); }
         if (updates.checked_by !== undefined) { fields.push('checked_by = ?'); values.push(updates.checked_by); }
+        if (updates.sort_order !== undefined) { fields.push('sort_order = ?'); values.push(updates.sort_order); }
 
         if (fields.length === 0) return;
 
@@ -82,7 +93,7 @@ class MachineChecklistModel {
             SELECT mc.*, m.machine_name
             FROM machine_checklists mc
             JOIN machines m ON mc.machine_id = m.machine_id
-            ORDER BY mc.updated_at DESC
+            ORDER BY mc.machine_id, mc.sort_order ASC, mc.created_at ASC
         `;
         const [rows] = await pool.execute(query);
         return rows.map(row => {
@@ -98,6 +109,47 @@ class MachineChecklistModel {
         const query = `SELECT MAX(updated_at) as last_saved_on FROM machine_checklists WHERE machine_id = ?`;
         const [rows] = await pool.execute(query, [machine_id]);
         return rows[0]?.last_saved_on || null;
+    }
+
+    static async reorder(machine_id, orderedIds) {
+        const pool = getPool();
+        const connection = await pool.getConnection();
+        try {
+            await connection.beginTransaction();
+            for (let i = 0; i < orderedIds.length; i++) {
+                await connection.execute(
+                    `UPDATE machine_checklists SET sort_order = ? WHERE id = ? AND machine_id = ?`,
+                    [i + 1, orderedIds[i], machine_id]
+                );
+            }
+            await connection.commit();
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
+    static async getChecklistSummaryByMachine() {
+        const pool = getPool();
+        const query = `
+            SELECT 
+                m.machine_id,
+                m.machine_name,
+                COUNT(mc.id) AS total_items,
+                SUM(CASE WHEN mc.status IN ('OK') THEN 1 ELSE 0 END) AS completed_items,
+                SUM(CASE WHEN mc.status = 'PENDING' THEN 1 ELSE 0 END) AS pending_items,
+                SUM(CASE WHEN mc.status = 'NOT_OK' THEN 1 ELSE 0 END) AS not_ok_items,
+                MAX(mc.updated_at) AS last_updated,
+                MIN(mc.created_at) AS created_at
+            FROM machines m
+            LEFT JOIN machine_checklists mc ON m.machine_id = mc.machine_id
+            GROUP BY m.machine_id, m.machine_name
+            ORDER BY m.machine_name
+        `;
+        const [rows] = await pool.execute(query);
+        return rows;
     }
 }
 

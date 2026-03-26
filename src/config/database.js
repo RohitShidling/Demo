@@ -491,6 +491,11 @@ const initTables = async () => {
             )
         `);
 
+        // Migration: Add sort_order column to machine_checklists
+        try {
+            await pool.query(`ALTER TABLE machine_checklists ADD COLUMN sort_order INT DEFAULT 0 AFTER comments`);
+        } catch (e) { /* Column may already exist, ignore */ }
+
         logger.info('Database tables initialized: business_users, operator_users, machines, machine_runs, hourly_production, work_orders, work_order_machines, part_rejections, workflow_steps, operator_skills, machine_operators, machine_breakdowns, daily_production, production_logs, machine_checklists, shifts, operator_shifts, machine_downtime, inventory_materials, inventory_consumption, quality_inspections, production_schedule, notifications, audit_logs');
     } catch (error) {
         logger.error('Error initializing tables:', error);
