@@ -13,28 +13,59 @@ const options = {
         components: {
             securitySchemes: {
                 bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT', description: 'Enter JWT token obtained from login' }
+            },
+            schemas: {
+                AuthTokens: {
+                    type: 'object',
+                    properties: {
+                        accessToken: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' },
+                        refreshToken: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' },
+                        expiresIn: { type: 'string', example: '2d' },
+                        refreshExpiresIn: { type: 'string', example: '2d' }
+                    }
+                },
+                WorkOrderMachineAssignment: {
+                    type: 'object',
+                    required: ['machine_id', 'stage_order'],
+                    properties: {
+                        machine_id: { type: 'string', example: 'MACH-A1B2C3D4' },
+                        stage_order: { type: 'integer', minimum: 1, example: 2, description: 'Must be the next stage only. If stage 1 exists, next must be stage 2.' }
+                    }
+                },
+                MachineStatusUpdate: {
+                    type: 'object',
+                    required: ['machine_id', 'status'],
+                    properties: {
+                        machine_id: { type: 'string', example: 'MACH-A1B2C3D4' },
+                        status: { type: 'string', enum: ['RUNNING', 'MAINTENANCE', 'NOT_STARTED'], example: 'RUNNING' }
+                    }
+                }
             }
         },
         security: [{ bearerAuth: [] }],
         tags: [
             { name: 'Business Auth', description: 'Business/Admin level authentication APIs' },
             { name: 'Operator Auth', description: 'Operator level authentication APIs' },
-            { name: 'Machines', description: 'Machine management, OEE, downtime, and data ingestion' },
+            { name: 'Machines', description: 'Machine management, downtime, and data ingestion' },
             { name: 'Machine Checklist', description: 'Machine checklists - safety, cleaning, lubrication check sheets' },
             { name: 'Work Orders', description: 'Work order CRUD, machine assignment, and production tracking' },
             { name: 'Workflows', description: 'Workflow steps management for work orders' },
             { name: 'Production', description: 'Production recording and ingestion' },
             { name: 'Operators', description: 'Operator checklist, rejections, skills, assignments, breakdowns' },
-            { name: 'Shifts', description: 'Shift management and operator assignment' },
-            { name: 'Inventory', description: 'Inventory materials and consumption tracking' },
-            { name: 'Quality', description: 'Quality inspections and reports' },
-            { name: 'Scheduling', description: 'Production scheduling and planning' },
             { name: 'Dashboard', description: 'Business dashboard overview and analytics' },
             { name: 'Notifications', description: 'Notification management' },
-            { name: 'Audit Logs', description: 'System audit trail' },
-            { name: 'Alerts', description: 'System alerts and warnings' }
+            { name: 'Alerts', description: 'System alerts and warnings' },
+            { name: 'System', description: 'System and health APIs' }
         ],
         paths: {
+            '/health': {
+                get: {
+                    tags: ['System'],
+                    summary: 'Health check',
+                    security: [],
+                    responses: { '200': { description: 'API and server are healthy' } }
+                }
+            },
             // ═══════════════════════════════════════════════
             // BUSINESS AUTH
             // ═══════════════════════════════════════════════
@@ -48,7 +79,7 @@ const options = {
             '/business/auth/login': {
                 post: {
                     tags: ['Business Auth'], summary: 'Login business user', security: [],
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email', 'password'], properties: { email: { type: 'string' }, password: { type: 'string' } } } } } },
+                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email', 'password'], properties: { email: { type: 'string', example: 'admin@mes.com' }, password: { type: 'string', example: 'pass123' } } } } } },
                     responses: { '200': { description: 'Login successful, returns accessToken and refreshToken' }, '401': { description: 'Invalid credentials' } }
                 }
             },
@@ -58,7 +89,7 @@ const options = {
             '/business/auth/refresh': {
                 post: {
                     tags: ['Business Auth'], summary: 'Refresh access token', security: [],
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['refreshToken'], properties: { refreshToken: { type: 'string' } } } } } },
+                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['refreshToken'], properties: { refreshToken: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' } } } } } },
                     responses: { '200': { description: 'Token refreshed' } }
                 }
             },
@@ -79,7 +110,7 @@ const options = {
             '/operator/auth/login': {
                 post: {
                     tags: ['Operator Auth'], summary: 'Login operator user', security: [],
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email', 'password'], properties: { email: { type: 'string' }, password: { type: 'string' } } } } } },
+                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email', 'password'], properties: { email: { type: 'string', example: 'operator@mes.com' }, password: { type: 'string', example: 'pass123' } } } } } },
                     responses: { '200': { description: 'Login successful' }, '401': { description: 'Invalid credentials' } }
                 }
             },
@@ -89,7 +120,7 @@ const options = {
             '/operator/auth/refresh': {
                 post: {
                     tags: ['Operator Auth'], summary: 'Refresh operator token', security: [],
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['refreshToken'], properties: { refreshToken: { type: 'string' } } } } } },
+                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['refreshToken'], properties: { refreshToken: { type: 'string', example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' } } } } } },
                     responses: { '200': { description: 'Token refreshed' } }
                 }
             },
@@ -123,7 +154,7 @@ const options = {
                     tags: ['Machines'], summary: 'Get machine visualization data',
                     parameters: [
                         { name: 'machineId', in: 'path', required: true, schema: { type: 'string' } },
-                        { name: 'filter', in: 'query', schema: { type: 'string', enum: ['today', 'week', 'month', 'custom'] } },
+                        { name: 'filter', in: 'query', schema: { type: 'string', enum: ['hourly', 'daily', 'calendar', 'date'], example: 'daily' } },
                         { name: 'start_date', in: 'query', schema: { type: 'string', format: 'date' } },
                         { name: 'end_date', in: 'query', schema: { type: 'string', format: 'date' } }
                     ],
@@ -144,24 +175,24 @@ const options = {
                     responses: { '200': { description: 'Machine history' } }
                 }
             },
-            '/machines/{machineId}/oee': {
+            '/machines/production-count': {
+                get: { tags: ['Machines'], summary: 'Get total production count for all machines', responses: { '200': { description: 'Production counts' } } }
+            },
+            '/machines/{machineId}/production-count': {
                 get: {
-                    tags: ['Machines'], summary: 'Get machine OEE (Overall Equipment Effectiveness)',
-                    parameters: [
-                        { name: 'machineId', in: 'path', required: true, schema: { type: 'string' } },
-                        { name: 'time_range', in: 'query', schema: { type: 'string', enum: ['today', 'week', 'month'], default: 'today' } }
-                    ],
-                    responses: { '200': { description: 'OEE data with availability, performance, quality' } }
+                    tags: ['Machines'], summary: 'Get total production count for a specific machine',
+                    parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
+                    responses: { '200': { description: 'Machine production count' } }
                 }
             },
-            '/machines/{machineId}/oee/history': {
+            '/machines/rejection-count': {
+                get: { tags: ['Machines'], summary: 'Get total rejection count for all machines', responses: { '200': { description: 'Rejection counts' } } }
+            },
+            '/machines/{machineId}/rejection-count': {
                 get: {
-                    tags: ['Machines'], summary: 'Get OEE history',
-                    parameters: [
-                        { name: 'machineId', in: 'path', required: true, schema: { type: 'string' } },
-                        { name: 'filter', in: 'query', schema: { type: 'string', enum: ['daily', 'weekly', 'monthly'], default: 'daily' } }
-                    ],
-                    responses: { '200': { description: 'OEE history data' } }
+                    tags: ['Machines'], summary: 'Get total rejection count for a specific machine',
+                    parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
+                    responses: { '200': { description: 'Machine rejection count' } }
                 }
             },
             '/machines/{machineId}/downtime-analysis': {
@@ -262,7 +293,7 @@ const options = {
             '/work-orders': {
                 post: {
                     tags: ['Work Orders'], summary: 'Create work order',
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['work_order_name', 'target'], properties: { work_order_name: { type: 'string', example: 'Batch 2026-Q1' }, target: { type: 'integer', example: 1000 }, description: { type: 'string' } } } } } },
+                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['work_order_name', 'target'], properties: { work_order_name: { type: 'string', example: 'Batch 2026-Q1' }, target: { type: 'integer', example: 1000 }, description: { type: 'string' }, targeted_end_date: { type: 'string', format: 'date' } } } } } },
                     responses: { '201': { description: 'Work order created' } }
                 },
                 get: { tags: ['Work Orders'], summary: 'Get all work orders', responses: { '200': { description: 'List of work orders' } } }
@@ -289,13 +320,42 @@ const options = {
                 post: {
                     tags: ['Work Orders'], summary: 'Assign machine to work order',
                     parameters: [{ name: 'workOrderId', in: 'path', required: true, schema: { type: 'string' } }],
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['machine_id'], properties: { machine_id: { type: 'string' } } } } } },
-                    responses: { '200': { description: 'Machine assigned' } }
+                    requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/WorkOrderMachineAssignment' } } } },
+                    responses: {
+                        '200': { description: 'Machine assigned to the requested sequential stage' },
+                        '400': { description: 'Invalid stage. Must be next sequential stage only (1,2,3...)' },
+                        '409': { description: 'Machine already assigned to another active work order' }
+                    }
                 },
                 get: {
-                    tags: ['Work Orders'], summary: 'Get machines assigned to work order',
+                    tags: ['Work Orders'], summary: 'Get machines assigned to work order (always stage ordered)',
                     parameters: [{ name: 'workOrderId', in: 'path', required: true, schema: { type: 'string' } }],
                     responses: { '200': { description: 'List of assigned machines' } }
+                }
+            },
+            '/work-orders/{workOrderId}/machines/{machineId}/stage': {
+                put: {
+                    tags: ['Work Orders'], summary: 'Update machine stage order in work order',
+                    parameters: [
+                        { name: 'workOrderId', in: 'path', required: true, schema: { type: 'string' } },
+                        { name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }
+                    ],
+                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['stage_order'], properties: { stage_order: { type: 'integer' } } } } } },
+                    responses: { '200': { description: 'Machine stage updated' } }
+                }
+            },
+            '/work-orders/{workOrderId}/checklist-overview': {
+                get: {
+                    tags: ['Work Orders'], summary: 'Get checklist status overview for all machines in work order',
+                    parameters: [{ name: 'workOrderId', in: 'path', required: true, schema: { type: 'string' } }],
+                    responses: { '200': { description: 'Checklist overview (status enum: NOT_STARTED, PENDING, COMPLETED)' } }
+                }
+            },
+            '/work-orders/{workOrderId}/machine-status': {
+                get: {
+                    tags: ['Work Orders'], summary: 'Get running status overview for all machines in work order',
+                    parameters: [{ name: 'workOrderId', in: 'path', required: true, schema: { type: 'string' } }],
+                    responses: { '200': { description: 'Machine status overview (status enum: RUNNING, STOPPED, MAINTENANCE, NOT_STARTED)' } }
                 }
             },
             '/work-orders/{workOrderId}/machines/{machineId}': {
@@ -310,9 +370,26 @@ const options = {
             },
             '/work-orders/{workOrderId}/rejections': {
                 get: {
-                    tags: ['Work Orders'], summary: 'Get rejections for work order',
+                    tags: ['Work Orders'], summary: 'Get rejection summary grouped by machine for work order',
                     parameters: [{ name: 'workOrderId', in: 'path', required: true, schema: { type: 'string' } }],
                     responses: { '200': { description: 'Work order rejections' } }
+                }
+            },
+            '/work-orders/{workOrderId}/rejections/details': {
+                get: {
+                    tags: ['Work Orders'], summary: 'Get full rejection details for a work order (all machines)',
+                    parameters: [{ name: 'workOrderId', in: 'path', required: true, schema: { type: 'string', example: 'WO-3FA91D2B' } }],
+                    responses: { '200': { description: 'Detailed rejection list including image/reason/rework/operator/supervisor/timestamp' } }
+                }
+            },
+            '/work-orders/{workOrderId}/machines/{machineId}/rejections': {
+                get: {
+                    tags: ['Work Orders'], summary: 'Get full rejection details for one machine in a work order',
+                    parameters: [
+                        { name: 'workOrderId', in: 'path', required: true, schema: { type: 'string', example: 'WO-3FA91D2B' } },
+                        { name: 'machineId', in: 'path', required: true, schema: { type: 'string', example: 'MACH-A1B2C3D4' } }
+                    ],
+                    responses: { '200': { description: 'Machine-specific detailed rejection list for this work order' } }
                 }
             },
             '/work-orders/{workOrderId}/production-summary': {
@@ -324,9 +401,9 @@ const options = {
             },
             '/work-orders/{workOrderId}/machine-production': {
                 get: {
-                    tags: ['Work Orders'], summary: 'Get per-machine production for work order',
+                    tags: ['Work Orders'], summary: 'Get per-machine accepted/rejected/produced counts for work order (stage ordered)',
                     parameters: [{ name: 'workOrderId', in: 'path', required: true, schema: { type: 'string' } }],
-                    responses: { '200': { description: 'Machine-wise production data' } }
+                    responses: { '200': { description: 'Machine-wise production data with stage_order, produced_count, accepted_count, rejected_count' } }
                 }
             },
             '/work-orders/{workOrderId}/summary': {
@@ -415,14 +492,14 @@ const options = {
             '/operator/checklist/update': {
                 post: {
                     tags: ['Operators'], summary: 'Update machine status',
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['machine_id', 'status'], properties: { machine_id: { type: 'string' }, status: { type: 'string', enum: ['RUNNING', 'STOPPED', 'MAINTENANCE', 'NOT_STARTED'] } } } } } },
+                    requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/MachineStatusUpdate' } } } },
                     responses: { '200': { description: 'Status updated' } }
                 }
             },
             '/operator/rejections': {
                 post: {
                     tags: ['Operators'], summary: 'Upload part rejection',
-                    requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', required: ['machine_id', 'rejection_reason'], properties: { machine_id: { type: 'string' }, work_order_id: { type: 'string' }, rejection_reason: { type: 'string' }, rejected_count: { type: 'integer', default: 1 }, part_image: { type: 'string', format: 'binary' } } } } } },
+                    requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', required: ['machine_id', 'rejection_reason'], properties: { machine_id: { type: 'string', example: 'MACH-A1B2C3D4' }, work_order_id: { type: 'string', example: 'WO-3FA91D2B' }, rejection_reason: { type: 'string', example: 'Edge crack on part' }, rework_reason: { type: 'string', example: 'Re-polish and re-inspect required' }, part_description: { type: 'string', example: 'Pressure cooker lid outer ring' }, supervisor_name: { type: 'string', example: 'Supervisor Ravi' }, rejected_count: { type: 'integer', default: 1, example: 2 }, part_image: { type: 'string', format: 'binary' } } } } } },
                     responses: { '201': { description: 'Rejection reported' } }
                 },
                 get: { tags: ['Operators'], summary: 'Get all rejections', responses: { '200': { description: 'All rejections' } } }
@@ -499,101 +576,12 @@ const options = {
                 get: { tags: ['Operators'], summary: 'Get active breakdowns', responses: { '200': { description: 'Active breakdowns' } } }
             },
 
-            // ═══════════════════════════════════════════════
-            // SHIFTS
-            // ═══════════════════════════════════════════════
-            '/shifts': {
-                post: {
-                    tags: ['Shifts'], summary: 'Create a shift',
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['shift_name', 'start_time', 'end_time'], properties: { shift_name: { type: 'string', example: 'Morning' }, start_time: { type: 'string', example: '06:00:00' }, end_time: { type: 'string', example: '14:00:00' } } } } } },
-                    responses: { '201': { description: 'Shift created' } }
-                },
-                get: { tags: ['Shifts'], summary: 'Get all shifts', responses: { '200': { description: 'List of shifts' } } }
-            },
-            '/shifts/current': {
-                get: { tags: ['Shifts'], summary: 'Get current active shift', responses: { '200': { description: 'Current shift or no active shift message' } } }
-            },
-            '/shifts/assign': {
-                post: {
-                    tags: ['Shifts'], summary: 'Assign operator to shift',
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['operator_id', 'shift_id', 'date'], properties: { operator_id: { type: 'integer' }, shift_id: { type: 'integer' }, date: { type: 'string', format: 'date' } } } } } },
-                    responses: { '201': { description: 'Operator assigned to shift' } }
-                }
-            },
-            '/shifts/{shiftId}/performance': {
-                get: {
-                    tags: ['Shifts'], summary: 'Get shift performance metrics',
-                    parameters: [{ name: 'shiftId', in: 'path', required: true, schema: { type: 'integer' } }],
-                    responses: { '200': { description: 'Shift performance data' } }
-                }
-            },
-
-            // ═══════════════════════════════════════════════
-            // INVENTORY
-            // ═══════════════════════════════════════════════
-            '/inventory/materials': {
-                post: {
-                    tags: ['Inventory'], summary: 'Add material to inventory',
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['material_name'], properties: { material_name: { type: 'string' }, quantity: { type: 'number' }, unit: { type: 'string', default: 'pcs' } } } } } },
-                    responses: { '201': { description: 'Material added' } }
-                },
-                get: { tags: ['Inventory'], summary: 'Get all materials', responses: { '200': { description: 'Materials list' } } }
-            },
-            '/inventory/consume': {
-                post: {
-                    tags: ['Inventory'], summary: 'Consume material from inventory',
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['material_id', 'quantity_used'], properties: { material_id: { type: 'integer' }, work_order_id: { type: 'string' }, quantity_used: { type: 'number' } } } } } },
-                    responses: { '200': { description: 'Material consumed' }, '400': { description: 'Insufficient stock' } }
-                }
-            },
-
-            // ═══════════════════════════════════════════════
-            // QUALITY
-            // ═══════════════════════════════════════════════
-            '/quality/inspection': {
-                post: {
-                    tags: ['Quality'], summary: 'Record quality inspection',
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['machine_id'], properties: { machine_id: { type: 'string' }, work_order_id: { type: 'string' }, parameters: { type: 'object' }, status: { type: 'string', enum: ['PASS', 'FAIL'] }, remarks: { type: 'string' } } } } } },
-                    responses: { '201': { description: 'Inspection recorded' } }
-                }
-            },
-            '/quality/reports': {
-                get: {
-                    tags: ['Quality'], summary: 'Get quality reports',
-                    parameters: [
-                        { name: 'work_order_id', in: 'query', schema: { type: 'string' } },
-                        { name: 'machine_id', in: 'query', schema: { type: 'string' } }
-                    ],
-                    responses: { '200': { description: 'Quality reports' } }
-                }
-            },
-
-            // ═══════════════════════════════════════════════
-            // SCHEDULING
-            // ═══════════════════════════════════════════════
-            '/scheduling/plan': {
-                post: {
-                    tags: ['Scheduling'], summary: 'Create production plan',
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['work_order_id', 'machine_id', 'start_time', 'end_time'], properties: { work_order_id: { type: 'string' }, machine_id: { type: 'string' }, start_time: { type: 'string', format: 'date-time' }, end_time: { type: 'string', format: 'date-time' } } } } } },
-                    responses: { '201': { description: 'Plan created' } }
-                }
-            },
-            '/scheduling': {
-                get: { tags: ['Scheduling'], summary: 'Get full production schedule', responses: { '200': { description: 'Schedule list' } } }
-            },
-            '/scheduling/machine/{machineId}': {
-                get: {
-                    tags: ['Scheduling'], summary: 'Get schedule for a specific machine',
-                    parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
-                    responses: { '200': { description: 'Machine schedule' } }
-                }
-            },
 
             // ═══════════════════════════════════════════════
             // DASHBOARD
             // ═══════════════════════════════════════════════
             '/dashboard/overview': {
-                get: { tags: ['Dashboard'], summary: 'Get business dashboard overview (work orders, machines, production, OEE)', responses: { '200': { description: 'Dashboard overview data' } } }
+                get: { tags: ['Dashboard'], summary: 'Get business dashboard overview (work orders, machines, production)', responses: { '200': { description: 'Dashboard overview data' } } }
             },
             '/dashboard/work-orders': {
                 get: { tags: ['Dashboard'], summary: 'Get work order status with production data', responses: { '200': { description: 'Work order status list with completion percentages' } } }
@@ -603,11 +591,25 @@ const options = {
             // NOTIFICATIONS
             // ═══════════════════════════════════════════════
             '/notifications': {
-                get: { tags: ['Notifications'], summary: 'Get notifications for current user', responses: { '200': { description: 'Notifications list' } } },
+                get: {
+                    tags: ['Notifications'], summary: 'Get notifications',
+                    parameters: [{ name: 'machine_id', in: 'query', schema: { type: 'string' } }],
+                    responses: { '200': { description: 'Notifications list' } }
+                },
                 post: {
                     tags: ['Notifications'], summary: 'Create notification',
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['title', 'message'], properties: { title: { type: 'string' }, message: { type: 'string' }, type: { type: 'string', enum: ['INFO', 'WARNING', 'ERROR', 'SUCCESS'] }, user_id: { type: 'integer' }, user_type: { type: 'string', enum: ['business', 'operator'] } } } } } },
+                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['title', 'message'], properties: { title: { type: 'string' }, message: { type: 'string' }, type: { type: 'string', enum: ['INFO', 'WARNING', 'ERROR', 'SUCCESS'] }, machine_id: { type: 'string' }, user_id: { type: 'integer' }, user_type: { type: 'string', enum: ['business', 'operator'] } } } } } },
                     responses: { '201': { description: 'Notification created' } }
+                },
+                delete: {
+                    tags: ['Notifications'], summary: 'Delete all notifications', responses: { '200': { description: 'All notifications deleted' } }
+                }
+            },
+            '/notifications/{id}': {
+                delete: {
+                    tags: ['Notifications'], summary: 'Delete a single notification',
+                    parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+                    responses: { '200': { description: 'Notification deleted' } }
                 }
             },
             '/notifications/{id}/read': {
@@ -618,21 +620,7 @@ const options = {
                 }
             },
 
-            // ═══════════════════════════════════════════════
-            // AUDIT LOGS
-            // ═══════════════════════════════════════════════
-            '/audit-logs': {
-                get: {
-                    tags: ['Audit Logs'], summary: 'Get audit logs',
-                    parameters: [
-                        { name: 'limit', in: 'query', schema: { type: 'integer', default: 100 } },
-                        { name: 'offset', in: 'query', schema: { type: 'integer', default: 0 } },
-                        { name: 'entity_type', in: 'query', schema: { type: 'string' } },
-                        { name: 'entity_id', in: 'query', schema: { type: 'string' } }
-                    ],
-                    responses: { '200': { description: 'Audit logs' } }
-                }
-            },
+
 
             // ═══════════════════════════════════════════════
             // ALERTS

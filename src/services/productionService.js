@@ -1,6 +1,7 @@
 const ProductionLogModel = require('../models/ProductionLog');
 const MachineModel = require('../models/Machine');
 const WorkOrderModel = require('../models/WorkOrder');
+const WorkOrderMachineModel = require('../models/WorkOrderMachine');
 const AuditLogModel = require('../models/AuditLog');
 const logger = require('../utils/logger');
 
@@ -26,6 +27,8 @@ class ProductionService {
         if (work_order_id) {
             if (produced_count > 0) await WorkOrderModel.incrementProduced(work_order_id, produced_count);
             if (rejected_count > 0) await WorkOrderModel.incrementRejected(work_order_id, rejected_count);
+            if (produced_count > 0) await WorkOrderMachineModel.incrementProductionCount(work_order_id, machine_id, produced_count);
+            if (rejected_count > 0) await WorkOrderMachineModel.incrementRejectedCount(work_order_id, machine_id, rejected_count);
         }
 
         // Audit log

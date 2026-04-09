@@ -5,6 +5,8 @@ const MachineOperatorModel = require('../models/MachineOperator');
 const MachineBreakdownModel = require('../models/MachineBreakdown');
 const WorkOrderModel = require('../models/WorkOrder');
 const DailyProductionModel = require('../models/DailyProduction');
+const WorkOrderMachineModel = require('../models/WorkOrderMachine');
+const ProductionLogModel = require('../models/ProductionLog');
 const logger = require('../utils/logger');
 
 class OperatorService {
@@ -33,18 +35,53 @@ class OperatorService {
     }
 
     // ── Part Rejection ──
-    async reportRejection({ machine_id, work_order_id, operator_id, rejection_reason, part_image, rejected_count }) {
+    async reportRejection({
+        machine_id,
+        work_order_id,
+        operator_id,
+        rejection_reason,
+        rework_reason,
+        part_description,
+        supervisor_name,
+        part_image,
+        rejected_count
+    }) {
         const machine = await MachineModel.findById(machine_id);
         if (!machine) { const e = new Error('Machine not found'); e.statusCode = 404; throw e; }
 
         const id = await PartRejectionModel.create({
-            machine_id, work_order_id, operator_id, rejection_reason, part_image, rejected_count: rejected_count || 1
+            machine_id,
+            work_order_id,
+            operator_id,
+            rejection_reason,
+            rework_reason,
+            part_description,
+            supervisor_name,
+            part_image,
+            rejected_count: rejected_count || 1
         });
 
         // Update work order rejection count if work_order_id provided
         if (work_order_id) {
             try { await WorkOrderModel.incrementRejected(work_order_id, rejected_count || 1); } catch (e) { /* ignore */ }
         }
+
+        // Keep work_order_machines and production_logs in sync for machine/work-order reports
+        try {
+            const targetWO = work_order_id
+                ? { work_order_id }
+                : await WorkOrderMachineModel.getActiveWorkOrderForMachine(machine_id);
+
+            if (targetWO?.work_order_id) {
+                await WorkOrderMachineModel.incrementRejectedCount(targetWO.work_order_id, machine_id, rejected_count || 1);
+                await ProductionLogModel.create({
+                    machine_id,
+                    work_order_id: targetWO.work_order_id,
+                    produced_count: 0,
+                    rejected_count: rejected_count || 1
+                });
+            }
+        } catch (_) { /* ignore */ }
 
         // Update daily production rejection
         try {

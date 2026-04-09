@@ -7,11 +7,15 @@ const getIO = (req) => {
 
 exports.createWorkOrder = async (req, res, next) => {
     try {
-        const { work_order_name, target, description } = req.body;
+        const { work_order_name, target, description, targeted_end_date } = req.body;
         if (!work_order_name || !target) {
             return res.status(400).json({ success: false, message: 'work_order_name and target are required' });
         }
-        const wo = await WorkOrderService.createWorkOrder({ work_order_name, target: parseInt(target), description, created_by: req.user.id });
+        const wo = await WorkOrderService.createWorkOrder({
+            work_order_name, target: parseInt(target), description,
+            targeted_end_date: targeted_end_date || null,
+            created_by: req.user.id
+        });
         res.status(201).json({ success: true, data: wo });
 
         const ns = getIO(req);
@@ -46,7 +50,7 @@ exports.updateWorkOrder = async (req, res, next) => {
 exports.deleteWorkOrder = async (req, res, next) => {
     try {
         await WorkOrderService.deleteWorkOrder(req.params.workOrderId);
-        res.json({ success: true, message: 'Work order deleted' });
+        res.json({ success: true, message: 'Work order deleted and all machine assignments cleared' });
 
         const ns = getIO(req);
         if (ns) ns.emit('workorder:deleted', { work_order_id: req.params.workOrderId, timestamp: new Date().toISOString() });
@@ -55,13 +59,36 @@ exports.deleteWorkOrder = async (req, res, next) => {
 
 exports.assignMachine = async (req, res, next) => {
     try {
-        const { machine_id } = req.body;
+        const { machine_id, stage_order } = req.body;
         if (!machine_id) return res.status(400).json({ success: false, message: 'machine_id is required' });
-        await WorkOrderService.assignMachine(req.params.workOrderId, machine_id);
+        if (stage_order === undefined || stage_order === null) {
+            return res.status(400).json({ success: false, message: 'stage_order is required' });
+        }
+        await WorkOrderService.assignMachine(req.params.workOrderId, machine_id, parseInt(stage_order, 10));
         res.json({ success: true, message: 'Machine assigned to work order' });
 
         const ns = getIO(req);
-        if (ns) ns.emit('workorder:machine_assigned', { work_order_id: req.params.workOrderId, machine_id, timestamp: new Date().toISOString() });
+        if (ns) ns.emit('workorder:machine_assigned', {
+            work_order_id: req.params.workOrderId, machine_id, stage_order,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) { next(error); }
+};
+
+exports.updateMachineStage = async (req, res, next) => {
+    try {
+        const { stage_order } = req.body;
+        if (stage_order === undefined || stage_order === null) {
+            return res.status(400).json({ success: false, message: 'stage_order is required' });
+        }
+        await WorkOrderService.updateMachineStage(req.params.workOrderId, req.params.machineId, parseInt(stage_order));
+        res.json({ success: true, message: 'Machine stage updated' });
+
+        const ns = getIO(req);
+        if (ns) ns.emit('workorder:stage_updated', {
+            work_order_id: req.params.workOrderId, machine_id: req.params.machineId,
+            stage_order: parseInt(stage_order), timestamp: new Date().toISOString()
+        });
     } catch (error) { next(error); }
 };
 
@@ -69,6 +96,12 @@ exports.unassignMachine = async (req, res, next) => {
     try {
         await WorkOrderService.unassignMachine(req.params.workOrderId, req.params.machineId);
         res.json({ success: true, message: 'Machine unassigned from work order' });
+
+        const ns = getIO(req);
+        if (ns) ns.emit('workorder:machine_unassigned', {
+            work_order_id: req.params.workOrderId, machine_id: req.params.machineId,
+            timestamp: new Date().toISOString()
+        });
     } catch (error) { next(error); }
 };
 
@@ -82,6 +115,37 @@ exports.getWorkOrderMachines = async (req, res, next) => {
 exports.getWorkOrderRejections = async (req, res, next) => {
     try {
         const data = await WorkOrderService.getWorkOrderWithRejections(req.params.workOrderId);
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+exports.getWorkOrderRejectionDetails = async (req, res, next) => {
+    try {
+        const data = await WorkOrderService.getWorkOrderRejectionDetails(req.params.workOrderId);
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+exports.getMachineRejectionDetailsForWorkOrder = async (req, res, next) => {
+    try {
+        const data = await WorkOrderService.getMachineRejectionDetailsForWorkOrder(
+            req.params.workOrderId,
+            req.params.machineId
+        );
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+exports.getChecklistOverview = async (req, res, next) => {
+    try {
+        const data = await WorkOrderService.getChecklistOverview(req.params.workOrderId);
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+exports.getMachineRunningStatus = async (req, res, next) => {
+    try {
+        const data = await WorkOrderService.getMachineRunningStatus(req.params.workOrderId);
         res.json({ success: true, data });
     } catch (error) { next(error); }
 };

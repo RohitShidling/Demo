@@ -184,6 +184,11 @@ const initTables = async () => {
             await pool.query(`ALTER TABLE work_orders MODIFY COLUMN status ENUM('CREATED', 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED') DEFAULT 'CREATED'`);
         } catch (e) { /* ignore */ }
 
+        // Migration: Add targeted_end_date to work_orders
+        try {
+            await pool.query(`ALTER TABLE work_orders ADD COLUMN targeted_end_date DATE NULL AFTER description`);
+        } catch (e) { /* Column may already exist, ignore */ }
+
         // ─────────────────────────────────────────────────
         // Table 7: Work Order <-> Machine Junction
         // ─────────────────────────────────────────────────
@@ -199,6 +204,12 @@ const initTables = async () => {
             )
         `);
 
+        // Migration: Add stage_order and per-machine production counts to work_order_machines
+        try { await pool.query(`ALTER TABLE work_order_machines ADD COLUMN stage_order INT NULL`); } catch(e){}
+        try { await pool.query(`ALTER TABLE work_order_machines ADD COLUMN production_count INT DEFAULT 0 NOT NULL`); } catch(e){}
+        try { await pool.query(`ALTER TABLE work_order_machines ADD COLUMN rejected_count INT DEFAULT 0 NOT NULL`); } catch(e){}
+        try { await pool.query(`ALTER TABLE work_order_machines ADD COLUMN accepted_count INT DEFAULT 0 NOT NULL`); } catch(e){}
+
         // ─────────────────────────────────────────────────
         // Table 8: Part Rejections
         // ─────────────────────────────────────────────────
@@ -209,12 +220,20 @@ const initTables = async () => {
                 work_order_id VARCHAR(50),
                 operator_id INT NOT NULL,
                 rejection_reason TEXT NOT NULL,
+                rework_reason TEXT,
+                part_description TEXT,
+                supervisor_name VARCHAR(100),
                 part_image LONGBLOB,
                 rejected_count INT DEFAULT 1,
                 created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
                 FOREIGN KEY (machine_id) REFERENCES machines(machine_id) ON DELETE CASCADE
             )
         `);
+
+        // Migration: enrich rejection details for reports
+        try { await pool.query(`ALTER TABLE part_rejections ADD COLUMN rework_reason TEXT NULL AFTER rejection_reason`); } catch (e) { /* ignore */ }
+        try { await pool.query(`ALTER TABLE part_rejections ADD COLUMN part_description TEXT NULL AFTER rework_reason`); } catch (e) { /* ignore */ }
+        try { await pool.query(`ALTER TABLE part_rejections ADD COLUMN supervisor_name VARCHAR(100) NULL AFTER part_description`); } catch (e) { /* ignore */ }
 
         // ─────────────────────────────────────────────────
         // Table 9: Workflow Steps (for work orders)
@@ -496,7 +515,13 @@ const initTables = async () => {
             await pool.query(`ALTER TABLE machine_checklists ADD COLUMN sort_order INT DEFAULT 0 AFTER comments`);
         } catch (e) { /* Column may already exist, ignore */ }
 
-        logger.info('Database tables initialized: business_users, operator_users, machines, machine_runs, hourly_production, work_orders, work_order_machines, part_rejections, workflow_steps, operator_skills, machine_operators, machine_breakdowns, daily_production, production_logs, machine_checklists, shifts, operator_shifts, machine_downtime, inventory_materials, inventory_consumption, quality_inspections, production_schedule, notifications, audit_logs');
+        // Migration: Add machine_id to notifications for machine-specific alerts
+        try {
+            await pool.query(`ALTER TABLE notifications ADD COLUMN machine_id VARCHAR(50) NULL AFTER type`);
+        } catch (e) { /* Column may already exist, ignore */ }
+
+        logger.info('Database tables initialized with all migrations applied successfully.');
+
     } catch (error) {
         logger.error('Error initializing tables:', error);
         throw error;

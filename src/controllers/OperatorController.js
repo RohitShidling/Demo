@@ -34,14 +34,15 @@ exports.uploadRejection = [
     upload.single('part_image'),
     async (req, res, next) => {
         try {
-            const { machine_id, work_order_id, rejection_reason, rejected_count } = req.body;
+            const { machine_id, work_order_id, rejection_reason, rework_reason, part_description, supervisor_name, rejected_count } = req.body;
             if (!machine_id || !rejection_reason) {
                 return res.status(400).json({ success: false, message: 'machine_id and rejection_reason required' });
             }
             const part_image = req.file ? req.file.buffer : null;
             const result = await OperatorService.reportRejection({
                 machine_id, work_order_id, operator_id: req.user.id,
-                rejection_reason, part_image, rejected_count: parseInt(rejected_count) || 1
+                rejection_reason, rework_reason, part_description, supervisor_name,
+                part_image, rejected_count: parseInt(rejected_count) || 1
             });
             res.status(201).json({ success: true, data: result });
 

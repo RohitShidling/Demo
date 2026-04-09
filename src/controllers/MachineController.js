@@ -88,8 +88,40 @@ exports.getMachineDetails = async (req, res, next) => {
 
 exports.getMachineVisualization = async (req, res, next) => {
     try {
-        const { filter, start_date, end_date } = req.query;
-        const data = await MachineService.getMachineVisualization(req.params.machineId, { filter, start_date, end_date });
+        const { filter, start_date, end_date, date } = req.query;
+        const data = await MachineService.getMachineVisualization(req.params.machineId, { filter, start_date, end_date, date });
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+// GET /api/machines/production-count  — all machines production count
+exports.getAllMachinesProductionCount = async (req, res, next) => {
+    try {
+        const data = await MachineService.getAllMachinesProductionCount();
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+// GET /api/machines/:machineId/production-count  — specific machine production count
+exports.getMachineProductionCount = async (req, res, next) => {
+    try {
+        const data = await MachineService.getMachineProductionCount(req.params.machineId);
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+// GET /api/machines/rejection-count  — all machines rejection count
+exports.getAllMachinesRejectionCount = async (req, res, next) => {
+    try {
+        const data = await MachineService.getAllMachinesRejectionCount();
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+// GET /api/machines/:machineId/rejection-count  — specific machine rejection count
+exports.getMachineRejectionCount = async (req, res, next) => {
+    try {
+        const data = await MachineService.getMachineRejectionCount(req.params.machineId);
         res.json({ success: true, data });
     } catch (error) { next(error); }
 };

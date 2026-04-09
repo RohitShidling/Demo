@@ -3,8 +3,28 @@ const config = require('../config/env');
 const logger = require('../utils/logger');
 
 /**
- * JWT Authentication Middleware
- * Supports both business and operator user types
+ * Try to verify a JWT against both business and operator secrets.
+ * Returns decoded payload with userType set, or throws on failure.
+ */
+function verifyToken(token) {
+    // Try business secret first
+    try {
+        const decoded = jwt.verify(token, config.businessJwt.secret);
+        if (decoded.userType === 'business') return decoded;
+    } catch (_) { /* not a business token */ }
+
+    // Try operator secret next
+    try {
+        const decoded = jwt.verify(token, config.operatorJwt.secret);
+        if (decoded.userType === 'operator') return decoded;
+    } catch (_) { /* not an operator token */ }
+
+    // Fallback: shared secret (backwards-compat during transition)
+    return jwt.verify(token, config.jwt.secret);
+}
+
+/**
+ * JWT Authentication Middleware — supports business and operator user types
  */
 const authenticate = (req, res, next) => {
     try {
@@ -21,7 +41,7 @@ const authenticate = (req, res, next) => {
             return res.status(401).json({ success: false, message: 'Token is empty.' });
         }
 
-        const decoded = jwt.verify(token, config.jwt.secret);
+        const decoded = verifyToken(token);
         req.user = {
             id: decoded.id,
             username: decoded.username,
@@ -69,14 +89,14 @@ const authorizeUserType = (...types) => {
 };
 
 /**
- * Socket.IO Authentication Middleware
+ * Socket.IO Authentication Middleware — tries both secrets
  */
 const authenticateSocket = (socket, next) => {
     try {
         const token = socket.handshake.auth?.token || socket.handshake.query?.token;
         if (!token) return next(new Error('Authentication required'));
 
-        const decoded = jwt.verify(token, config.jwt.secret);
+        const decoded = verifyToken(token);
         socket.user = {
             id: decoded.id,
             username: decoded.username,

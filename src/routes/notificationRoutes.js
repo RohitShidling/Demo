@@ -5,13 +5,19 @@ const { authenticate } = require('../middleware/auth');
 
 router.use(authenticate);
 
-// GET /api/notifications - Get notifications
+// GET  /api/notifications          - Get notifications (optional ?machine_id=xxx)
 router.get('/', NotificationController.getNotifications);
 
-// POST /api/notifications - Create notification
+// POST /api/notifications          - Create notification (broadcasts via socket)
 router.post('/', NotificationController.createNotification);
 
 // PATCH /api/notifications/:id/read - Mark as read
 router.patch('/:id/read', NotificationController.markAsRead);
+
+// DELETE /api/notifications        - Delete ALL notifications
+router.delete('/', NotificationController.deleteAllNotifications);
+
+// DELETE /api/notifications/:id    - Delete specific notification
+router.delete('/:id', NotificationController.deleteNotification);
 
 module.exports = router;

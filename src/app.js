@@ -91,8 +91,6 @@ app.get('/', (req, res) => {
                 profile: `${config.api.prefix}/operator/auth/me`
             },
             machines: `${config.api.prefix}/machines`,
-            machine_oee: `${config.api.prefix}/machines/:machineId/oee`,
-            machine_oee_history: `${config.api.prefix}/machines/:machineId/oee/history`,
             machine_downtime: `${config.api.prefix}/machines/:machineId/downtime-analysis`,
             work_orders: `${config.api.prefix}/work-orders`,
             production_summary: `${config.api.prefix}/work-orders/:id/production-summary`,

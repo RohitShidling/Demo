@@ -1,13 +1,34 @@
 const { getPool } = require('../config/database');
 
 class PartRejectionModel {
-    static async create({ machine_id, work_order_id, operator_id, rejection_reason, part_image, rejected_count = 1 }) {
+    static async create({
+        machine_id,
+        work_order_id,
+        operator_id,
+        rejection_reason,
+        rework_reason,
+        part_description,
+        supervisor_name,
+        part_image,
+        rejected_count = 1
+    }) {
         const pool = getPool();
         const query = `
-            INSERT INTO part_rejections (machine_id, work_order_id, operator_id, rejection_reason, part_image, rejected_count)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO part_rejections
+            (machine_id, work_order_id, operator_id, rejection_reason, rework_reason, part_description, supervisor_name, part_image, rejected_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
-        const [result] = await pool.execute(query, [machine_id, work_order_id, operator_id, rejection_reason, part_image, rejected_count]);
+        const [result] = await pool.execute(query, [
+            machine_id,
+            work_order_id,
+            operator_id,
+            rejection_reason,
+            rework_reason || null,
+            part_description || null,
+            supervisor_name || null,
+            part_image,
+            rejected_count
+        ]);
         return result.insertId;
     }
 
@@ -21,8 +42,10 @@ class PartRejectionModel {
     static async findByMachine(machine_id) {
         const pool = getPool();
         const query = `
-            SELECT pr.*, ou.username as operator_name 
+            SELECT pr.*, m.machine_name, m.ingest_path, wo.work_order_name, wo.description as work_order_description, ou.username as operator_name
             FROM part_rejections pr
+            JOIN machines m ON pr.machine_id = m.machine_id
+            LEFT JOIN work_orders wo ON pr.work_order_id = wo.work_order_id
             LEFT JOIN operator_users ou ON pr.operator_id = ou.id
             WHERE pr.machine_id = ? 
             ORDER BY pr.created_at DESC
@@ -34,9 +57,10 @@ class PartRejectionModel {
     static async findByWorkOrder(work_order_id) {
         const pool = getPool();
         const query = `
-            SELECT pr.*, m.machine_name, ou.username as operator_name
+            SELECT pr.*, m.machine_name, m.ingest_path, wo.work_order_name, wo.description as work_order_description, ou.username as operator_name
             FROM part_rejections pr
             JOIN machines m ON pr.machine_id = m.machine_id
+            LEFT JOIN work_orders wo ON pr.work_order_id = wo.work_order_id
             LEFT JOIN operator_users ou ON pr.operator_id = ou.id
             WHERE pr.work_order_id = ?
             ORDER BY pr.created_at DESC
@@ -48,8 +72,10 @@ class PartRejectionModel {
     static async findByMachineAndWorkOrder(machine_id, work_order_id) {
         const pool = getPool();
         const query = `
-            SELECT pr.*, ou.username as operator_name
+            SELECT pr.*, m.machine_name, m.ingest_path, wo.work_order_name, wo.description as work_order_description, ou.username as operator_name
             FROM part_rejections pr
+            JOIN machines m ON pr.machine_id = m.machine_id
+            LEFT JOIN work_orders wo ON pr.work_order_id = wo.work_order_id
             LEFT JOIN operator_users ou ON pr.operator_id = ou.id
             WHERE pr.machine_id = ? AND pr.work_order_id = ?
             ORDER BY pr.created_at DESC
@@ -91,9 +117,10 @@ class PartRejectionModel {
     static async findAll() {
         const pool = getPool();
         const query = `
-            SELECT pr.*, m.machine_name, ou.username as operator_name
+            SELECT pr.*, m.machine_name, m.ingest_path, wo.work_order_name, wo.description as work_order_description, ou.username as operator_name
             FROM part_rejections pr
             JOIN machines m ON pr.machine_id = m.machine_id
+            LEFT JOIN work_orders wo ON pr.work_order_id = wo.work_order_id
             LEFT JOIN operator_users ou ON pr.operator_id = ou.id
             ORDER BY pr.created_at DESC
         `;

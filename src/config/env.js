@@ -13,12 +13,28 @@ module.exports = {
     port: parseInt(process.env.DB_PORT) || 3306
   },
 
-  // JWT Authentication
+  // JWT Authentication (shared fallback)
   jwt: {
     secret: process.env.JWT_SECRET || 'default_jwt_secret_change_me',
-    expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+    expiresIn: process.env.JWT_EXPIRES_IN || '2d',
     refreshSecret: process.env.JWT_REFRESH_SECRET || 'default_refresh_secret_change_me',
-    refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d'
+    refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '2d'
+  },
+
+  // Business (Admin) JWT — dedicated secrets
+  businessJwt: {
+    secret: process.env.BUSINESS_JWT_SECRET || 'mes_business_admin_jwt_2026_xB9kQ3mN7pL2wR5',
+    expiresIn: process.env.BUSINESS_JWT_EXPIRES_IN || '2d',
+    refreshSecret: process.env.BUSINESS_JWT_REFRESH_SECRET || 'mes_business_refresh_2026_zA4vD8nF6jH1cT3',
+    refreshExpiresIn: process.env.BUSINESS_JWT_REFRESH_EXPIRES_IN || '2d'
+  },
+
+  // Operator JWT — dedicated secrets
+  operatorJwt: {
+    secret: process.env.OPERATOR_JWT_SECRET || 'mes_operator_jwt_2026_yE5rS2tG9kM4bW7',
+    expiresIn: process.env.OPERATOR_JWT_EXPIRES_IN || '2d',
+    refreshSecret: process.env.OPERATOR_JWT_REFRESH_SECRET || 'mes_operator_refresh_2026_uP6qC1fJ3nX8hV0',
+    refreshExpiresIn: process.env.OPERATOR_JWT_REFRESH_EXPIRES_IN || '2d'
   },
 
   // CORS

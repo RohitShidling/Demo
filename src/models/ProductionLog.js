@@ -41,15 +41,15 @@ class ProductionLogModel {
             SELECT 
                 wo.work_order_id,
                 wo.target,
-                COALESCE(SUM(pl.produced_count), 0) AS total_produced,
-                COALESCE(SUM(pl.rejected_count), 0) AS total_rejected,
-                (wo.target - COALESCE(SUM(pl.produced_count), 0)) AS remaining,
+                COALESCE(SUM(wom.production_count), 0) AS total_produced,
+                COALESCE(SUM(wom.rejected_count), 0) AS total_rejected,
+                (wo.target - COALESCE(SUM(wom.production_count), 0)) AS remaining,
                 ROUND(
-                    (COALESCE(SUM(pl.produced_count), 0) / wo.target) * 100,
+                    (COALESCE(SUM(wom.production_count), 0) / NULLIF(wo.target, 0)) * 100,
                     2
                 ) AS completion_percentage
             FROM work_orders wo
-            LEFT JOIN production_logs pl ON wo.work_order_id = pl.work_order_id
+            LEFT JOIN work_order_machines wom ON wo.work_order_id = wom.work_order_id
             WHERE wo.work_order_id = ?
             GROUP BY wo.work_order_id, wo.target
         `;
@@ -62,12 +62,16 @@ class ProductionLogModel {
         const pool = getPool();
         const query = `
             SELECT 
-                pl.machine_id,
-                COALESCE(SUM(pl.produced_count), 0) AS produced,
-                COALESCE(SUM(pl.rejected_count), 0) AS rejected
-            FROM production_logs pl
-            WHERE pl.work_order_id = ?
-            GROUP BY pl.machine_id
+                wom.machine_id,
+                m.machine_name,
+                COALESCE(wom.stage_order, 9999) AS stage_order,
+                COALESCE(wom.production_count, 0) AS produced_count,
+                COALESCE(wom.rejected_count, 0) AS rejected_count,
+                COALESCE(wom.accepted_count, 0) AS accepted_count
+            FROM work_order_machines wom
+            JOIN machines m ON wom.machine_id = m.machine_id
+            WHERE wom.work_order_id = ?
+            ORDER BY COALESCE(wom.stage_order, 9999), wom.assigned_at
         `;
         const [rows] = await pool.execute(query, [work_order_id]);
         return rows;

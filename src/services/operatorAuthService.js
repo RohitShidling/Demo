@@ -8,14 +8,16 @@ class OperatorAuthService {
     generateAccessToken(user) {
         return jwt.sign(
             { id: user.id, username: user.username, email: user.email, role: 'operator', userType: 'operator' },
-            config.jwt.secret, { expiresIn: config.jwt.expiresIn }
+            config.operatorJwt.secret,
+            { expiresIn: config.operatorJwt.expiresIn }
         );
     }
 
     generateRefreshToken(user) {
         return jwt.sign(
             { id: user.id, userType: 'operator' },
-            config.jwt.refreshSecret, { expiresIn: config.jwt.refreshExpiresIn }
+            config.operatorJwt.refreshSecret,
+            { expiresIn: config.operatorJwt.refreshExpiresIn }
         );
     }
 
@@ -60,7 +62,7 @@ class OperatorAuthService {
     async refreshToken(refreshToken) {
         if (!refreshToken) { const e = new Error('Refresh token required'); e.statusCode = 400; throw e; }
         try {
-            const decoded = jwt.verify(refreshToken, config.jwt.refreshSecret);
+            const decoded = jwt.verify(refreshToken, config.operatorJwt.refreshSecret);
             if (decoded.userType !== 'operator') { const e = new Error('Invalid token type'); e.statusCode = 401; throw e; }
             const user = await OperatorUserModel.findByRefreshToken(refreshToken);
             if (!user || user.id !== decoded.id) { const e = new Error('Invalid refresh token'); e.statusCode = 401; throw e; }

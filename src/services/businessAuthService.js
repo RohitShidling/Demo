@@ -14,16 +14,16 @@ class BusinessAuthService {
                 role: 'admin',
                 userType: 'business'
             },
-            config.jwt.secret,
-            { expiresIn: config.jwt.expiresIn }
+            config.businessJwt.secret,
+            { expiresIn: config.businessJwt.expiresIn }
         );
     }
 
     generateRefreshToken(user) {
         return jwt.sign(
             { id: user.id, userType: 'business' },
-            config.jwt.refreshSecret,
-            { expiresIn: config.jwt.refreshExpiresIn }
+            config.businessJwt.refreshSecret,
+            { expiresIn: config.businessJwt.refreshExpiresIn }
         );
     }
 
@@ -113,7 +113,7 @@ class BusinessAuthService {
         }
 
         try {
-            const decoded = jwt.verify(refreshToken, config.jwt.refreshSecret);
+            const decoded = jwt.verify(refreshToken, config.businessJwt.refreshSecret);
 
             if (decoded.userType !== 'business') {
                 const error = new Error('Invalid token type for business login');
