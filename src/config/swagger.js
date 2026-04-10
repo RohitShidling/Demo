@@ -592,31 +592,46 @@ const options = {
             // ═══════════════════════════════════════════════
             '/notifications': {
                 get: {
-                    tags: ['Notifications'], summary: 'Get notifications',
+                    tags: ['Notifications'], summary: 'Get notifications (business users only)',
                     parameters: [{ name: 'machine_id', in: 'query', schema: { type: 'string' } }],
-                    responses: { '200': { description: 'Notifications list' } }
+                    responses: {
+                        '200': { description: 'Notifications list' },
+                        '403': { description: 'Unauthorized access. Only business users are allowed for notifications.' }
+                    }
                 },
                 post: {
-                    tags: ['Notifications'], summary: 'Create notification',
+                    tags: ['Notifications'], summary: 'Create notification (business users only)',
                     requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['title', 'message'], properties: { title: { type: 'string' }, message: { type: 'string' }, type: { type: 'string', enum: ['INFO', 'WARNING', 'ERROR', 'SUCCESS'] }, machine_id: { type: 'string' }, user_id: { type: 'integer' }, user_type: { type: 'string', enum: ['business', 'operator'] } } } } } },
-                    responses: { '201': { description: 'Notification created' } }
+                    responses: {
+                        '201': { description: 'Notification created' },
+                        '403': { description: 'Unauthorized access. Only business users are allowed for notifications.' }
+                    }
                 },
                 delete: {
-                    tags: ['Notifications'], summary: 'Delete all notifications', responses: { '200': { description: 'All notifications deleted' } }
+                    tags: ['Notifications'], summary: 'Delete all notifications (business users only)', responses: {
+                        '200': { description: 'All notifications deleted' },
+                        '403': { description: 'Unauthorized access. Only business users are allowed for notifications.' }
+                    }
                 }
             },
             '/notifications/{id}': {
                 delete: {
-                    tags: ['Notifications'], summary: 'Delete a single notification',
+                    tags: ['Notifications'], summary: 'Delete a single notification (business users only)',
                     parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
-                    responses: { '200': { description: 'Notification deleted' } }
+                    responses: {
+                        '200': { description: 'Notification deleted' },
+                        '403': { description: 'Unauthorized access. Only business users are allowed for notifications.' }
+                    }
                 }
             },
             '/notifications/{id}/read': {
                 patch: {
-                    tags: ['Notifications'], summary: 'Mark notification as read',
+                    tags: ['Notifications'], summary: 'Mark notification as read (business users only)',
                     parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
-                    responses: { '200': { description: 'Marked as read' } }
+                    responses: {
+                        '200': { description: 'Marked as read' },
+                        '403': { description: 'Unauthorized access. Only business users are allowed for notifications.' }
+                    }
                 }
             },
 

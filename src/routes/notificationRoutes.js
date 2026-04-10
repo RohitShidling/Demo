@@ -5,6 +5,18 @@ const { authenticate } = require('../middleware/auth');
 
 router.use(authenticate);
 
+// Notifications are restricted to business/admin users only.
+const allowBusinessOnly = (req, res, next) => {
+    if (req.user?.userType !== 'business') {
+        return res.status(403).json({
+            success: false,
+            message: 'Unauthorized access. Only business users are allowed for notifications.'
+        });
+    }
+    next();
+};
+router.use(allowBusinessOnly);
+
 // GET  /api/notifications          - Get notifications (optional ?machine_id=xxx)
 router.get('/', NotificationController.getNotifications);
 
