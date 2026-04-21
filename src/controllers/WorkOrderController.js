@@ -7,13 +7,30 @@ const getIO = (req) => {
 
 exports.createWorkOrder = async (req, res, next) => {
     try {
-        const { work_order_name, target, description, targeted_end_date } = req.body;
-        if (!work_order_name || !target) {
-            return res.status(400).json({ success: false, message: 'work_order_name and target are required' });
+        const { work_order_id, work_order_name, target, description, targeted_end_date,
+                target_day, target_month, target_year } = req.body;
+
+        if (!work_order_id || !work_order_name || !target) {
+            return res.status(400).json({
+                success: false,
+                message: 'work_order_id, work_order_name and target are required'
+            });
         }
+
+        // Build targeted_end_date from parts (day/month/year) or use the direct value
+        let endDate = targeted_end_date || null;
+        if (!endDate && target_day && target_month && target_year) {
+            const day = String(target_day).padStart(2, '0');
+            const month = String(target_month).padStart(2, '0');
+            endDate = `${target_year}-${month}-${day}`;
+        }
+
         const wo = await WorkOrderService.createWorkOrder({
-            work_order_name, target: parseInt(target), description,
-            targeted_end_date: targeted_end_date || null,
+            work_order_id,
+            work_order_name,
+            target: parseInt(target),
+            description: description || null,
+            targeted_end_date: endDate,
             created_by: req.user.id
         });
         res.status(201).json({ success: true, data: wo });

@@ -167,6 +167,11 @@ class MachineService {
             }
         }
 
+        // Build current_run with computed accepted = total - rejected
+        const runTotal = lastRun ? (lastRun.total_count || 0) : 0;
+        const runRejected = lastRun ? (lastRun.rejected_count || 0) : 0;
+        const runAccepted = Math.max(0, runTotal - runRejected);
+
         return {
             machine_id: machine.machine_id,
             machine_name: machine.machine_name,
@@ -175,9 +180,6 @@ class MachineService {
             status: machine.status || 'NOT_STARTED',
             work_order: workOrderInfo,
             production_target: productionTarget,
-            total_produced: totalProduced,
-            accepted_count: acceptedCount,
-            rejected_count: rejectedCount,
             progress_percentage: progressPercentage,
             last_start: lastRun ? lastRun.start_time : null,
             last_part_produced_at: lastRun ? lastRun.last_activity_time : null,
@@ -188,9 +190,9 @@ class MachineService {
                 run_id: lastRun.run_id,
                 start_time: lastRun.start_time,
                 end_time: lastRun.end_time,
-                total_count: lastRun.total_count,
-                accepted_count: lastRun.accepted_count || 0,
-                rejected_count: lastRun.rejected_count || 0,
+                total_count: runTotal,
+                accepted_count: runAccepted,
+                rejected_count: runRejected,
                 last_activity_time: lastRun.last_activity_time,
                 status: lastRun.status
             } : null
@@ -287,6 +289,207 @@ class MachineService {
         }
 
         return { machine_id, machine_name: machine.machine_name, filter: filter || 'all', visualization: data };
+    }
+
+    // ─── Hourly Production (last 24 hours, bar per hour) ───────────────────────
+    async getHourlyProduction(machine_id) {
+        const machine = await MachineModel.findById(machine_id);
+        if (!machine) { const e = new Error('Machine not found'); e.statusCode = 404; throw e; }
+
+        const pool = require('../config/database').getPool();
+
+        // Build 24 slots: from 24 hours ago rounded to the hour, up to current hour
+        const now = new Date();
+        const slotStart = new Date(now);
+        slotStart.setMinutes(0, 0, 0);
+        slotStart.setHours(slotStart.getHours() - 23); // 24 slots: -23h to now
+
+        const slotEnd = new Date(now);
+        slotEnd.setMinutes(59, 59, 999);
+
+        const [rows] = await pool.execute(
+            `SELECT hour_start_time, hour_end_time, product_count, accepted_count, rejected_count
+             FROM hourly_production
+             WHERE machine_id = ?
+               AND hour_start_time >= ?
+               AND hour_start_time <= ?
+             ORDER BY hour_start_time ASC`,
+            [machine_id, slotStart, slotEnd]
+        );
+
+        // Build a map keyed by ISO hour for fast lookup
+        const rowMap = {};
+        for (const r of rows) {
+            const key = new Date(r.hour_start_time).toISOString().slice(0, 13); // "YYYY-MM-DDTHH"
+            const total = r.product_count || 0;
+            const rejected = r.rejected_count || 0;
+            const accepted = r.accepted_count != null ? r.accepted_count : Math.max(0, total - rejected);
+            rowMap[key] = { total, accepted, rejected };
+        }
+
+        // Produce exactly 24 slots
+        const slots = [];
+        for (let i = 0; i < 24; i++) {
+            const slotDate = new Date(slotStart);
+            slotDate.setHours(slotStart.getHours() + i);
+            const key = slotDate.toISOString().slice(0, 13);
+            const data = rowMap[key] || { total: 0, accepted: 0, rejected: 0 };
+            const slotEndDate = new Date(slotDate);
+            slotEndDate.setHours(slotEndDate.getHours() + 1);
+            slots.push({
+                hour_label: slotDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false }),
+                hour_start: slotDate.toISOString(),
+                hour_end: slotEndDate.toISOString(),
+                total_count: data.total,
+                accepted_count: data.accepted,
+                rejected_count: data.rejected
+            });
+        }
+
+        return {
+            machine_id,
+            machine_name: machine.machine_name,
+            period: 'last_24_hours',
+            slots
+        };
+    }
+
+    // ─── Daily Production (last 31 days, bar per day) ──────────────────────────
+    async getDailyProduction(machine_id) {
+        const machine = await MachineModel.findById(machine_id);
+        if (!machine) { const e = new Error('Machine not found'); e.statusCode = 404; throw e; }
+
+        const pool = require('../config/database').getPool();
+
+        // Last 31 days, today inclusive
+        const today = new Date();
+        const startDay = new Date(today);
+        startDay.setDate(today.getDate() - 30); // 31 days total
+
+        const todayStr = today.toISOString().split('T')[0];
+        const startDayStr = startDay.toISOString().split('T')[0];
+
+        const [rows] = await pool.execute(
+            `SELECT production_date, total_count, accepted_count, rejected_count
+             FROM daily_production
+             WHERE machine_id = ?
+               AND production_date BETWEEN ? AND ?
+             ORDER BY production_date ASC`,
+            [machine_id, startDayStr, todayStr]
+        );
+
+        // Map keyed by date string
+        const rowMap = {};
+        for (const r of rows) {
+            const dateKey = (r.production_date instanceof Date)
+                ? r.production_date.toISOString().split('T')[0]
+                : String(r.production_date).split('T')[0];
+            const total = r.total_count || 0;
+            const rejected = r.rejected_count || 0;
+            const accepted = r.accepted_count != null ? r.accepted_count : Math.max(0, total - rejected);
+            rowMap[dateKey] = { total, accepted, rejected };
+        }
+
+        // Build exactly 31 day slots
+        const days = [];
+        for (let i = 0; i < 31; i++) {
+            const d = new Date(startDay);
+            d.setDate(startDay.getDate() + i);
+            const dateStr = d.toISOString().split('T')[0];
+            const data = rowMap[dateStr] || { total: 0, accepted: 0, rejected: 0 };
+            days.push({
+                date: dateStr,
+                day: d.getDate(),
+                month: d.getMonth() + 1,
+                year: d.getFullYear(),
+                day_label: d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+                total_count: data.total,
+                accepted_count: data.accepted,
+                rejected_count: data.rejected
+            });
+        }
+
+        return {
+            machine_id,
+            machine_name: machine.machine_name,
+            period: 'last_31_days',
+            start_date: startDayStr,
+            end_date: todayStr,
+            days
+        };
+    }
+
+    // ─── Custom Date-Range Production (day-by-day bars) ────────────────────────
+    async getCustomProduction(machine_id, start_date, end_date) {
+        const machine = await MachineModel.findById(machine_id);
+        if (!machine) { const e = new Error('Machine not found'); e.statusCode = 404; throw e; }
+
+        // Validate dates
+        if (!start_date || !end_date) {
+            const e = new Error('start_date and end_date are required (YYYY-MM-DD)');
+            e.statusCode = 400; throw e;
+        }
+        const startObj = new Date(start_date);
+        const endObj = new Date(end_date);
+        if (isNaN(startObj.getTime()) || isNaN(endObj.getTime())) {
+            const e = new Error('start_date and end_date must be valid dates in YYYY-MM-DD format');
+            e.statusCode = 400; throw e;
+        }
+        if (startObj > endObj) {
+            const e = new Error('start_date must not be after end_date');
+            e.statusCode = 400; throw e;
+        }
+
+        const pool = require('../config/database').getPool();
+        const [rows] = await pool.execute(
+            `SELECT production_date, total_count, accepted_count, rejected_count
+             FROM daily_production
+             WHERE machine_id = ?
+               AND production_date BETWEEN ? AND ?
+             ORDER BY production_date ASC`,
+            [machine_id, start_date, end_date]
+        );
+
+        // Map keyed by date string for exact-date matching (no data mixing)
+        const rowMap = {};
+        for (const r of rows) {
+            const dateKey = (r.production_date instanceof Date)
+                ? r.production_date.toISOString().split('T')[0]
+                : String(r.production_date).split('T')[0];
+            const total = r.total_count || 0;
+            const rejected = r.rejected_count || 0;
+            const accepted = r.accepted_count != null ? r.accepted_count : Math.max(0, total - rejected);
+            rowMap[dateKey] = { total, accepted, rejected };
+        }
+
+        // Enumerate every day in the range
+        const days = [];
+        const cursor = new Date(startObj);
+        while (cursor <= endObj) {
+            const dateStr = cursor.toISOString().split('T')[0];
+            const data = rowMap[dateStr] || { total: 0, accepted: 0, rejected: 0 };
+            days.push({
+                date: dateStr,
+                day: cursor.getDate(),
+                month: cursor.getMonth() + 1,
+                year: cursor.getFullYear(),
+                day_label: cursor.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+                total_count: data.total,
+                accepted_count: data.accepted,
+                rejected_count: data.rejected
+            });
+            cursor.setDate(cursor.getDate() + 1);
+        }
+
+        return {
+            machine_id,
+            machine_name: machine.machine_name,
+            period: 'custom',
+            start_date,
+            end_date,
+            total_days: days.length,
+            days
+        };
     }
 }
 

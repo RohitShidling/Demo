@@ -125,3 +125,34 @@ exports.getMachineRejectionCount = async (req, res, next) => {
         res.json({ success: true, data });
     } catch (error) { next(error); }
 };
+
+// GET /api/machines/:machineId/production/hourly  — last 24 hours, one bar per hour
+exports.getHourlyProduction = async (req, res, next) => {
+    try {
+        const data = await MachineService.getHourlyProduction(req.params.machineId);
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+// GET /api/machines/:machineId/production/daily  — last 31 days, one bar per day
+exports.getDailyProduction = async (req, res, next) => {
+    try {
+        const data = await MachineService.getDailyProduction(req.params.machineId);
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+// GET /api/machines/:machineId/production/custom?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+exports.getCustomProduction = async (req, res, next) => {
+    try {
+        const { start_date, end_date } = req.query;
+        if (!start_date || !end_date) {
+            return res.status(400).json({
+                success: false,
+                message: 'start_date and end_date query parameters are required (YYYY-MM-DD)'
+            });
+        }
+        const data = await MachineService.getCustomProduction(req.params.machineId, start_date, end_date);
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};

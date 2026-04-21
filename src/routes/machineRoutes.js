@@ -44,6 +44,11 @@ router.get('/machines/:machineId/visualization', MachineController.getMachineVis
 router.get('/machines/:machineId/dashboard', MachineController.getDashboard);
 router.get('/machines/:machineId/history', MachineController.getHistory);
 
+// ── Production Analytics APIs ──
+router.get('/machines/:machineId/production/hourly', MachineController.getHourlyProduction);
+router.get('/machines/:machineId/production/daily', MachineController.getDailyProduction);
+router.get('/machines/:machineId/production/custom', MachineController.getCustomProduction);
+
 // ── Machine-Specific Count APIs ──
 router.get('/machines/:machineId/production-count', MachineController.getMachineProductionCount);
 router.get('/machines/:machineId/rejection-count', MachineController.getMachineRejectionCount);

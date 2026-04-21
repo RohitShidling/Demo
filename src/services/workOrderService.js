@@ -5,7 +5,6 @@ const MachineRunModel = require('../models/MachineRun');
 const MachineModel = require('../models/Machine');
 const MachineChecklistModel = require('../models/MachineChecklist');
 const logger = require('../utils/logger');
-const crypto = require('crypto');
 
 class WorkOrderService {
     formatRejectionEntry(row) {
@@ -50,12 +49,19 @@ class WorkOrderService {
         };
     }
 
-    async createWorkOrder({ work_order_name, target, description, targeted_end_date, created_by }) {
-        const randomId = crypto.randomBytes(4).toString('hex').toUpperCase();
-        const work_order_id = `WO-${randomId}`;
-        await WorkOrderModel.create({ work_order_id, work_order_name, target, description, targeted_end_date, created_by });
-        const wo = await WorkOrderModel.findById(work_order_id);
-        logger.info(`Work order created: ${work_order_id}`);
+    async createWorkOrder({ work_order_id, work_order_name, target, description, targeted_end_date, created_by }) {
+        if (!work_order_id || typeof work_order_id !== 'string' || work_order_id.trim() === '') {
+            const e = new Error('work_order_id is required and must be a non-empty string'); e.statusCode = 400; throw e;
+        }
+        const trimmedId = work_order_id.trim();
+        // Check uniqueness
+        const existing = await WorkOrderModel.findById(trimmedId);
+        if (existing) {
+            const e = new Error(`Work order ID '${trimmedId}' already exists. Please provide a unique ID.`); e.statusCode = 409; throw e;
+        }
+        await WorkOrderModel.create({ work_order_id: trimmedId, work_order_name, target, description, targeted_end_date, created_by });
+        const wo = await WorkOrderModel.findById(trimmedId);
+        logger.info(`Work order created: ${trimmedId}`);
         return wo;
     }
 
@@ -172,10 +178,16 @@ class WorkOrderService {
             const totalRejected = await PartRejectionModel.getTotalRejectedByMachine(m.machine_id);
 
             const productionTarget = wo.target || 0;
+            // Use WO-machine tracked counts for progress (accurate cumulative)
             const totalProduced = m.production_count || 0;
             const rejectedCount = m.rejected_count || 0;
             const acceptedCount = Math.max(0, totalProduced - rejectedCount);
             const progress = productionTarget > 0 ? Math.min(100, Math.round((totalProduced / productionTarget) * 100)) : 0;
+
+            // current_run uses the active/last run counts for live session data
+            const runTotalCount = lastRun ? (lastRun.total_count || 0) : 0;
+            const runRejectedCount = lastRun ? (lastRun.rejected_count || 0) : 0;
+            const runAcceptedCount = Math.max(0, runTotalCount - runRejectedCount);
 
             return {
                 machine_id: m.machine_id,
@@ -186,17 +198,14 @@ class WorkOrderService {
                 stage_order: m.stage_order,
                 assigned_at: m.assigned_at,
                 production_target: productionTarget,
-                total_produced: totalProduced,
-                accepted_count: acceptedCount,
-                rejected_count: rejectedCount,
                 progress_percentage: progress,
                 total_rejected_all_time: totalRejected,
                 current_run: lastRun ? {
                     start_time: lastRun.start_time,
                     end_time: lastRun.end_time,
-                    total_count: lastRun.total_count,
-                    accepted_count: lastRun.accepted_count || 0,
-                    rejected_count: lastRun.rejected_count || 0,
+                    total_count: runTotalCount,
+                    accepted_count: runAcceptedCount,
+                    rejected_count: runRejectedCount,
                     last_activity_time: lastRun.last_activity_time
                 } : null
             };

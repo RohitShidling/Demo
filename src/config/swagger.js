@@ -144,9 +144,11 @@ const options = {
             },
             '/machines/{machineId}/details': {
                 get: {
-                    tags: ['Machines'], summary: 'Get machine details',
+                    tags: ['Machines'],
+                    summary: 'Get machine details',
+                    description: 'Returns machine info with production metrics **inside current_run only** (total_count, accepted_count, rejected_count). Top-level total_produced/accepted_count/rejected_count have been removed to avoid duplication. progress_percentage is computed from WO machine data.',
                     parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
-                    responses: { '200': { description: 'Machine details' }, '404': { description: 'Machine not found' } }
+                    responses: { '200': { description: 'Machine details with current_run counts' }, '404': { description: 'Machine not found' } }
                 }
             },
             '/machines/{machineId}/visualization': {
@@ -222,6 +224,49 @@ const options = {
                     responses: { '200': { description: 'Machine stopped' } }
                 }
             },
+
+            // Production Analytics — 3 dedicated APIs
+            '/machines/{machineId}/production/hourly': {
+                get: {
+                    tags: ['Machines'],
+                    summary: 'Hourly production analytics (last 24 hours)',
+                    description: 'Returns exactly 24 hourly slots (one per hour) for the last 24 hours. Each slot has total_count, accepted_count, rejected_count. Empty hours return 0s.',
+                    parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' }, description: 'Machine ID' }],
+                    responses: {
+                        '200': { description: 'Hourly slots array. period=last_24_hours. slots[].hour_label, hour_start, hour_end, total_count, accepted_count, rejected_count.' },
+                        '404': { description: 'Machine not found' }
+                    }
+                }
+            },
+            '/machines/{machineId}/production/daily': {
+                get: {
+                    tags: ['Machines'],
+                    summary: 'Daily production analytics (last 31 days)',
+                    description: 'Returns exactly 31 day slots. Each day slot has date, day, month, year, day_label, total_count, accepted_count, rejected_count. Days with no production return 0s.',
+                    parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
+                    responses: {
+                        '200': { description: '31-day array. period=last_31_days. days[].date, day_label, total_count, accepted_count, rejected_count.' },
+                        '404': { description: 'Machine not found' }
+                    }
+                }
+            },
+            '/machines/{machineId}/production/custom': {
+                get: {
+                    tags: ['Machines'],
+                    summary: 'Custom date-range production analytics (day-by-day)',
+                    description: 'Returns one entry per day for the specified date range. Each entry contains only data for that exact date — no data mixing between dates.',
+                    parameters: [
+                        { name: 'machineId', in: 'path', required: true, schema: { type: 'string' } },
+                        { name: 'start_date', in: 'query', required: true, schema: { type: 'string', format: 'date', example: '2026-04-01' }, description: 'Start date (YYYY-MM-DD)' },
+                        { name: 'end_date', in: 'query', required: true, schema: { type: 'string', format: 'date', example: '2026-04-21' }, description: 'End date (YYYY-MM-DD)' }
+                    ],
+                    responses: {
+                        '200': { description: 'Day-by-day array for range. period=custom. days[].date, day_label, total_count, accepted_count, rejected_count. total_days shows count of days in range.' },
+                        '400': { description: 'start_date and end_date are required, start_date must not be after end_date' },
+                        '404': { description: 'Machine not found' }
+                    }
+                }
+            },
             '/ingest/{pathId}': {
                 post: {
                     tags: ['Machines'], summary: 'Ingest machine data (sensor/counter)',
@@ -293,8 +338,21 @@ const options = {
             '/work-orders': {
                 post: {
                     tags: ['Work Orders'], summary: 'Create work order',
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['work_order_name', 'target'], properties: { work_order_name: { type: 'string', example: 'Batch 2026-Q1' }, target: { type: 'integer', example: 1000 }, description: { type: 'string' }, targeted_end_date: { type: 'string', format: 'date' } } } } } },
-                    responses: { '201': { description: 'Work order created' } }
+                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['work_order_id', 'work_order_name', 'target'], properties: {
+                        work_order_id: { type: 'string', example: 'WO-2026-001', description: 'Unique Work Order ID provided by the user. Must be unique across all work orders.' },
+                        work_order_name: { type: 'string', example: 'Frying Pan - Batch Q1' },
+                        target: { type: 'integer', example: 1000 },
+                        description: { type: 'string', example: 'Make 1000 frying pans, 24cm aluminum body' },
+                        targeted_end_date: { type: 'string', format: 'date', example: '2026-12-31', description: 'Target end date as a full date string. Alternatively use target_day + target_month + target_year.' },
+                        target_day: { type: 'integer', example: 31, description: 'Day of targeted end date (1-31). Use with target_month and target_year.' },
+                        target_month: { type: 'integer', example: 12, description: 'Month of targeted end date (1-12).' },
+                        target_year: { type: 'integer', example: 2026, description: 'Year of targeted end date (e.g. 2026).' }
+                    } } } } },
+                    responses: {
+                        '201': { description: 'Work order created successfully' },
+                        '400': { description: 'work_order_id, work_order_name and target are required' },
+                        '409': { description: 'Work order ID already exists — provide a unique ID' }
+                    }
                 },
                 get: { tags: ['Work Orders'], summary: 'Get all work orders', responses: { '200': { description: 'List of work orders' } } }
             },
@@ -328,9 +386,11 @@ const options = {
                     }
                 },
                 get: {
-                    tags: ['Work Orders'], summary: 'Get machines assigned to work order (always stage ordered)',
+                    tags: ['Work Orders'],
+                    summary: 'Get machines assigned to work order (stage ordered)',
+                    description: 'Returns machines with production metrics **inside** current_run only (total_count, accepted_count, rejected_count). progress_percentage is computed in real-time from WO machine data.',
                     parameters: [{ name: 'workOrderId', in: 'path', required: true, schema: { type: 'string' } }],
-                    responses: { '200': { description: 'List of assigned machines' } }
+                    responses: { '200': { description: 'List of assigned machines. Each machine has: machine_id, machine_name, status, stage_order, production_target, progress_percentage, total_rejected_all_time, current_run (with total_count/accepted_count/rejected_count).' } }
                 }
             },
             '/work-orders/{workOrderId}/machines/{machineId}/stage': {
@@ -394,26 +454,41 @@ const options = {
             },
             '/work-orders/{workOrderId}/production-summary': {
                 get: {
-                    tags: ['Work Orders'], summary: 'Get production summary for work order',
-                    parameters: [{ name: 'workOrderId', in: 'path', required: true, schema: { type: 'string' } }],
-                    responses: { '200': { description: 'Production summary from production_logs' } }
+                    tags: ['Work Orders'],
+                    summary: 'Get production summary for work order',
+                    description: '**Business rules applied:** `produced` = last-stage machine\'s production_count (parts that completed the full pipeline). `rejected` = SUM of ALL machines\' rejected_count. `accepted` = produced - rejected.',
+                    parameters: [{ name: 'workOrderId', in: 'path', required: true, schema: { type: 'string', example: 'WO-2026-001' } }],
+                    responses: {
+                        '200': { description: 'work_order_id, work_order_name, target, produced, accepted, rejected, remaining, completion_percentage' },
+                        '404': { description: 'Work order not found' }
+                    }
                 }
             },
             '/work-orders/{workOrderId}/machine-production': {
                 get: {
-                    tags: ['Work Orders'], summary: 'Get per-machine accepted/rejected/produced counts for work order (stage ordered)',
+                    tags: ['Work Orders'],
+                    summary: 'Per-machine production breakdown for a work order (stage ordered)',
+                    description: 'Returns each machine with its own produced_count, rejected_count, accepted_count. is_last_stage=true marks the final pipeline machine whose produced_count equals the WO produced count.',
                     parameters: [{ name: 'workOrderId', in: 'path', required: true, schema: { type: 'string' } }],
-                    responses: { '200': { description: 'Machine-wise production data with stage_order, produced_count, accepted_count, rejected_count' } }
+                    responses: {
+                        '200': { description: 'machines[]: machine_id, machine_name, stage_order, is_last_stage, produced_count, accepted_count, rejected_count' },
+                        '404': { description: 'Work order not found' }
+                    }
                 }
             },
             '/work-orders/{workOrderId}/summary': {
                 get: {
-                    tags: ['Work Orders'], summary: 'Get work order final summary',
+                    tags: ['Work Orders'],
+                    summary: 'Get work order final summary (or machine-grouped)',
+                    description: 'Pass `group_by=machine` to get machine-wise breakdown. Without it, returns WO-level summary: produced (last stage), rejected (all machines), accepted, completion_percentage.',
                     parameters: [
                         { name: 'workOrderId', in: 'path', required: true, schema: { type: 'string' } },
-                        { name: 'group_by', in: 'query', schema: { type: 'string' } }
+                        { name: 'group_by', in: 'query', schema: { type: 'string', enum: ['machine'], description: 'Pass machine to get per-machine breakdown' } }
                     ],
-                    responses: { '200': { description: 'Final summary' } }
+                    responses: {
+                        '200': { description: 'Final WO summary or machine-grouped data' },
+                        '404': { description: 'Work order not found' }
+                    }
                 }
             },
 
