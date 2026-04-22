@@ -382,7 +382,18 @@ const options = {
                     responses: {
                         '200': { description: 'Machine assigned to the requested sequential stage' },
                         '400': { description: 'Invalid stage. Must be next sequential stage only (1,2,3...)' },
-                        '409': { description: 'Machine already assigned to another active work order' }
+                        '409': { 
+                            description: 'Conflict Error. Machine is already assigned.',
+                            content: {
+                                'application/json': {
+                                    schema: { type: 'object', properties: { error: { type: 'string' } } },
+                                    examples: {
+                                        sameWorkOrder: { value: { error: 'already assigned machine to this particular work order, please unassign machine, then try to reassign' } },
+                                        differentWorkOrder: { value: { error: "already assigned machine to work order 'WO-123', please unassign machine, then try to reassign" } }
+                                    }
+                                }
+                            }
+                        }
                     }
                 },
                 get: {
@@ -425,7 +436,7 @@ const options = {
                         { name: 'workOrderId', in: 'path', required: true, schema: { type: 'string' } },
                         { name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }
                     ],
-                    responses: { '200': { description: 'Machine unassigned' } }
+                    responses: { '200': { description: 'Machine unassigned and its production counts (total, accepted, rejected) are reset to zero.' } }
                 }
             },
             '/work-orders/{workOrderId}/rejections': {

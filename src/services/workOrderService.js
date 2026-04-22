@@ -161,10 +161,61 @@ class WorkOrderService {
     }
 
     async unassignMachine(work_order_id, machine_id) {
+        const wo = await WorkOrderModel.findById(work_order_id);
+        if (!wo) { const e = new Error('Work order not found'); e.statusCode = 404; throw e; }
+
+        // Make sure machine is actually assigned to this WO
+        const machines = await WorkOrderMachineModel.getMachinesByWorkOrder(work_order_id);
+        const assigned = machines.find(m => m.machine_id === machine_id);
+        if (!assigned) {
+            const e = new Error('Machine is not assigned to this work order');
+            e.statusCode = 404; throw e;
+        }
+
+        // unassign() zeroes all counts then deletes the row
         await WorkOrderMachineModel.unassign(work_order_id, machine_id);
+        
+        // Also zero out the current active run for this machine
+        await MachineRunModel.resetCounts(machine_id);
+
         await this.normalizeMachineStages(work_order_id);
-        // Reset machine status when unassigned
+        // Reset machine running status
         try { await MachineModel.updateStatus(machine_id, 'NOT_STARTED'); } catch (_) {}
+        logger.info(`Machine ${machine_id} unassigned from WO ${work_order_id} — counts zeroed`);
+    }
+
+    async getMachineAssignmentStatus(machine_id) {
+        const machine = await MachineModel.findById(machine_id);
+        if (!machine) { const e = new Error('Machine not found'); e.statusCode = 404; throw e; }
+
+        const active = await WorkOrderMachineModel.getAssignmentStatus(machine_id);
+
+        if (!active) {
+            return {
+                machine_id: machine.machine_id,
+                machine_name: machine.machine_name,
+                is_assigned: false,
+                current_assignment: null,
+                message: 'Machine is free and can be assigned to any work order.'
+            };
+        }
+
+        return {
+            machine_id: machine.machine_id,
+            machine_name: machine.machine_name,
+            is_assigned: true,
+            current_assignment: {
+                work_order_id: active.work_order_id,
+                work_order_name: active.work_order_name,
+                work_order_status: active.work_order_status,
+                stage_order: active.stage_order,
+                assigned_at: active.assigned_at,
+                production_count: parseInt(active.production_count) || 0,
+                rejected_count: parseInt(active.rejected_count) || 0,
+                accepted_count: parseInt(active.accepted_count) || 0
+            },
+            message: `Machine is currently assigned to work order '${active.work_order_id}'. Unassign it first before reassigning.`
+        };
     }
 
     async getWorkOrderMachines(work_order_id) {

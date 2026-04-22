@@ -3,17 +3,25 @@ const { getPool } = require('../config/database');
 class WorkOrderMachineModel {
     static async assign(work_order_id, machine_id, stage_order = null) {
         const pool = getPool();
-        // Check if machine is already assigned to another ACTIVE work order
+        // Check if machine is already assigned to any ACTIVE work order
         const [activeAssignments] = await pool.execute(
-            `SELECT wom.work_order_id FROM work_order_machines wom
+            `SELECT wom.work_order_id, wo.work_order_name
+             FROM work_order_machines wom
              JOIN work_orders wo ON wom.work_order_id = wo.work_order_id
-             WHERE wom.machine_id = ? AND wo.status NOT IN ('COMPLETED', 'CANCELLED')
-             AND wom.work_order_id != ?`,
-            [machine_id, work_order_id]
+             WHERE wom.machine_id = ? AND wo.status NOT IN ('COMPLETED', 'CANCELLED')`,
+            [machine_id]
         );
         if (activeAssignments.length > 0) {
-            const err = new Error(`Machine is already assigned to active work order: ${activeAssignments[0].work_order_id}`);
+            const conflict = activeAssignments[0];
+            let errorMsg = `already assigned machine to work order '${conflict.work_order_id}', please unassign machine, then try to reassign`;
+            if (conflict.work_order_id === work_order_id) {
+                errorMsg = `already assigned machine to this particular work order, please unassign machine, then try to reassign`;
+            }
+
+            const err = new Error(errorMsg);
             err.statusCode = 409;
+            err.conflicting_work_order_id = conflict.work_order_id;
+            err.conflicting_work_order_name = conflict.work_order_name;
             throw err;
         }
 
@@ -42,8 +50,18 @@ class WorkOrderMachineModel {
 
     static async unassign(work_order_id, machine_id) {
         const pool = getPool();
-        const query = `DELETE FROM work_order_machines WHERE work_order_id = ? AND machine_id = ?`;
-        await pool.execute(query, [work_order_id, machine_id]);
+        // Zero out all production counts BEFORE removing the row
+        // so the machine starts completely fresh in the next assignment
+        await pool.execute(
+            `UPDATE work_order_machines
+             SET production_count = 0, rejected_count = 0, accepted_count = 0
+             WHERE work_order_id = ? AND machine_id = ?`,
+            [work_order_id, machine_id]
+        );
+        await pool.execute(
+            `DELETE FROM work_order_machines WHERE work_order_id = ? AND machine_id = ?`,
+            [work_order_id, machine_id]
+        );
     }
 
     static async unassignAllByWorkOrder(work_order_id) {
@@ -193,6 +211,32 @@ class WorkOrderMachineModel {
         `;
         const [rows] = await pool.execute(query);
         return rows;
+    }
+
+    /**
+     * Check current assignment status of a machine.
+     * Returns the active work order it is assigned to (if any), or null.
+     */
+    static async getAssignmentStatus(machine_id) {
+        const pool = getPool();
+        const [rows] = await pool.execute(
+            `SELECT wom.work_order_id,
+                    wo.work_order_name,
+                    wo.status            AS work_order_status,
+                    wom.stage_order,
+                    wom.assigned_at,
+                    wom.production_count,
+                    wom.rejected_count,
+                    wom.accepted_count
+             FROM work_order_machines wom
+             JOIN work_orders wo ON wom.work_order_id = wo.work_order_id
+             WHERE wom.machine_id = ?
+               AND wo.status NOT IN ('COMPLETED', 'CANCELLED')
+             ORDER BY wom.assigned_at DESC
+             LIMIT 1`,
+            [machine_id]
+        );
+        return rows[0] || null;
     }
 }
 

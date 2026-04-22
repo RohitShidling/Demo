@@ -84,9 +84,20 @@ const errorHandler = (err, req, res, next) => {
         error: err
     } : null;
 
-    res.status(statusCode).json(
-        errorResponse(message, statusCode, errorDetails)
-    );
+    // For 409 machine-assignment conflicts: include the conflicting WO info
+    const conflictMeta = statusCode === 409 && err.conflicting_work_order_id
+        ? {
+            conflicting_work_order_id: err.conflicting_work_order_id,
+            conflicting_work_order_name: err.conflicting_work_order_name,
+            action_required: `Unassign machine from work order '${err.conflicting_work_order_id}' first, then reassign.`
+          }
+        : null;
+
+    const body = { success: false, message, statusCode };
+    if (conflictMeta) body.conflict = conflictMeta;
+    if (errorDetails) body.debug = errorDetails;
+
+    res.status(statusCode).json(body);
 };
 
 /**

@@ -126,6 +126,15 @@ exports.getMachineRejectionCount = async (req, res, next) => {
     } catch (error) { next(error); }
 };
 
+// GET /api/machines/:machineId/assignment-status  — check if machine is assigned to a work order
+exports.getMachineAssignmentStatus = async (req, res, next) => {
+    try {
+        const WorkOrderService = require('../services/workOrderService');
+        const data = await WorkOrderService.getMachineAssignmentStatus(req.params.machineId);
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
 // GET /api/machines/:machineId/production/hourly  — last 24 hours, one bar per hour
 exports.getHourlyProduction = async (req, res, next) => {
     try {

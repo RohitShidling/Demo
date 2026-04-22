@@ -61,6 +61,16 @@ class MachineRunModel {
         const [rows] = await pool.execute(query, [machine_id]);
         return rows[0];
     }
+
+    static async resetCounts(machine_id) {
+        const pool = getPool();
+        const query = `
+            UPDATE machine_runs 
+            SET total_count = 0, accepted_count = 0, rejected_count = 0 
+            WHERE machine_id = ? AND status = 'RUNNING'
+        `;
+        await pool.execute(query, [machine_id]);
+    }
 }
 
 module.exports = MachineRunModel;
