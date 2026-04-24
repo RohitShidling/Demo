@@ -419,7 +419,7 @@ class MachineService {
         };
     }
 
-    // ─── Custom Date-Range Production (day-by-day bars) ────────────────────────
+    // ─── Custom Date-Range Production (month-wise bars) ────────────────────────
     async getCustomProduction(machine_id, start_date, end_date) {
         const machine = await MachineModel.findById(machine_id);
         if (!machine) { const e = new Error('Machine not found'); e.statusCode = 404; throw e; }
@@ -429,13 +429,27 @@ class MachineService {
             const e = new Error('start_date and end_date are required (YYYY-MM-DD)');
             e.statusCode = 400; throw e;
         }
-        const startObj = new Date(start_date);
-        const endObj = new Date(end_date);
-        if (isNaN(startObj.getTime()) || isNaN(endObj.getTime())) {
+        const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+        if (!datePattern.test(start_date) || !datePattern.test(end_date)) {
             const e = new Error('start_date and end_date must be valid dates in YYYY-MM-DD format');
             e.statusCode = 400; throw e;
         }
-        if (startObj > endObj) {
+
+        const [startYear, startMonth, startDay] = start_date.split('-').map(Number);
+        const [endYear, endMonth, endDay] = end_date.split('-').map(Number);
+        const startObj = new Date(startYear, startMonth - 1, startDay);
+        const endObj = new Date(endYear, endMonth - 1, endDay);
+
+        if (
+            isNaN(startObj.getTime()) || isNaN(endObj.getTime()) ||
+            startObj.getFullYear() !== startYear || (startObj.getMonth() + 1) !== startMonth || startObj.getDate() !== startDay ||
+            endObj.getFullYear() !== endYear || (endObj.getMonth() + 1) !== endMonth || endObj.getDate() !== endDay
+        ) {
+            const e = new Error('start_date and end_date must be valid dates in YYYY-MM-DD format');
+            e.statusCode = 400; throw e;
+        }
+
+        if (startObj.getTime() > endObj.getTime()) {
             const e = new Error('start_date must not be after end_date');
             e.statusCode = 400; throw e;
         }
@@ -450,35 +464,46 @@ class MachineService {
             [machine_id, start_date, end_date]
         );
 
-        // Map keyed by date string for exact-date matching (no data mixing)
-        const rowMap = {};
+        // Group DB rows by month bucket in local-time-safe YYYY-MM format.
+        const monthMap = {};
         for (const r of rows) {
-            const dateKey = (r.production_date instanceof Date)
-                ? r.production_date.toISOString().split('T')[0]
-                : String(r.production_date).split('T')[0];
+            const dateValue = r.production_date;
+            const dateKey = (dateValue instanceof Date)
+                ? `${dateValue.getFullYear()}-${String(dateValue.getMonth() + 1).padStart(2, '0')}`
+                : String(dateValue).slice(0, 7);
             const total = r.total_count || 0;
             const rejected = r.rejected_count || 0;
             const accepted = r.accepted_count != null ? r.accepted_count : Math.max(0, total - rejected);
-            rowMap[dateKey] = { total, accepted, rejected };
+
+            if (!monthMap[dateKey]) {
+                monthMap[dateKey] = { total: 0, accepted: 0, rejected: 0 };
+            }
+            monthMap[dateKey].total += total;
+            monthMap[dateKey].accepted += accepted;
+            monthMap[dateKey].rejected += rejected;
         }
 
-        // Enumerate every day in the range
-        const days = [];
-        const cursor = new Date(startObj);
-        while (cursor <= endObj) {
-            const dateStr = cursor.toISOString().split('T')[0];
-            const data = rowMap[dateStr] || { total: 0, accepted: 0, rejected: 0 };
-            days.push({
-                date: dateStr,
-                day: cursor.getDate(),
-                month: cursor.getMonth() + 1,
-                year: cursor.getFullYear(),
-                day_label: cursor.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+        // Enumerate all months in the range to include zero months too.
+        const months = [];
+        const monthCursor = new Date(startObj.getFullYear(), startObj.getMonth(), 1);
+        const endMonthStart = new Date(endObj.getFullYear(), endObj.getMonth(), 1);
+
+        while (monthCursor.getTime() <= endMonthStart.getTime()) {
+            const year = monthCursor.getFullYear();
+            const month = monthCursor.getMonth() + 1;
+            const monthKey = `${year}-${String(month).padStart(2, '0')}`;
+            const data = monthMap[monthKey] || { total: 0, accepted: 0, rejected: 0 };
+
+            months.push({
+                month: monthKey,
+                month_label: monthCursor.toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
+                production: data.total,
                 total_count: data.total,
                 accepted_count: data.accepted,
                 rejected_count: data.rejected
             });
-            cursor.setDate(cursor.getDate() + 1);
+
+            monthCursor.setMonth(monthCursor.getMonth() + 1);
         }
 
         return {
@@ -487,8 +512,8 @@ class MachineService {
             period: 'custom',
             start_date,
             end_date,
-            total_days: days.length,
-            days
+            total_months: months.length,
+            months
         };
     }
 }

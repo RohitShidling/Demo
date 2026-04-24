@@ -253,15 +253,15 @@ const options = {
             '/machines/{machineId}/production/custom': {
                 get: {
                     tags: ['Machines'],
-                    summary: 'Custom date-range production analytics (day-by-day)',
-                    description: 'Returns one entry per day for the specified date range. Each entry contains only data for that exact date — no data mixing between dates.',
+                    summary: 'Custom date-range production analytics (month-wise)',
+                    description: 'Returns one entry per month for the specified date range. Each month contains aggregated production, accepted, and rejected counts for that month.',
                     parameters: [
                         { name: 'machineId', in: 'path', required: true, schema: { type: 'string' } },
                         { name: 'start_date', in: 'query', required: true, schema: { type: 'string', format: 'date', example: '2026-04-01' }, description: 'Start date (YYYY-MM-DD)' },
                         { name: 'end_date', in: 'query', required: true, schema: { type: 'string', format: 'date', example: '2026-04-21' }, description: 'End date (YYYY-MM-DD)' }
                     ],
                     responses: {
-                        '200': { description: 'Day-by-day array for range. period=custom. days[].date, day_label, total_count, accepted_count, rejected_count. total_days shows count of days in range.' },
+                        '200': { description: 'Month-wise array for range. period=custom. months[].month, month_label, production, accepted_count, rejected_count. total_months shows count of months in range.' },
                         '400': { description: 'start_date and end_date are required, start_date must not be after end_date' },
                         '404': { description: 'Machine not found' }
                     }
