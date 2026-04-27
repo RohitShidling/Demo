@@ -515,6 +515,19 @@ const initTables = async () => {
             await pool.query(`ALTER TABLE machine_checklists ADD COLUMN sort_order INT DEFAULT 0 AFTER comments`);
         } catch (e) { /* Column may already exist, ignore */ }
 
+        // Migration: Add fixer checklist metadata columns
+        try {
+            await pool.query(`ALTER TABLE machine_checklists ADD COLUMN operator_name VARCHAR(120) NULL AFTER machine_id`);
+        } catch (e) { /* Column may already exist, ignore */ }
+        try {
+            await pool.query(`ALTER TABLE machine_checklists ADD COLUMN cell_incharge_name VARCHAR(120) NULL AFTER operator_name`);
+        } catch (e) { /* Column may already exist, ignore */ }
+
+        // Migration: Support new checklist status values
+        try {
+            await pool.query(`ALTER TABLE machine_checklists MODIFY COLUMN status ENUM('PENDING', 'OK', 'NOT_OK', 'NA', 'DONE', 'NOT_DONE') DEFAULT 'PENDING'`);
+        } catch (e) { /* Enum may already be updated, ignore */ }
+
         // Migration: Add machine_id to notifications for machine-specific alerts
         try {
             await pool.query(`ALTER TABLE notifications ADD COLUMN machine_id VARCHAR(50) NULL AFTER type`);

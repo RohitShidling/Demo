@@ -12,6 +12,14 @@ exports.getAllChecklists = async (req, res, next) => {
     } catch (error) { next(error); }
 };
 
+// GET /api/checklist/generic - Get generic checklist definition
+exports.getGenericChecklist = async (req, res, next) => {
+    try {
+        const data = await ChecklistService.getGenericChecklist();
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
 // GET /api/checklist/summary - Get checklist summary for all machines
 exports.getChecklistSummary = async (req, res, next) => {
     try {
@@ -36,32 +44,52 @@ exports.getChecklist = async (req, res, next) => {
     } catch (error) { next(error); }
 };
 
+// PUT /api/checklist/:machineId/progress - Save machine specific checklist progress
+exports.saveChecklistProgress = async (req, res, next) => {
+    try {
+        const data = await ChecklistService.saveMachineChecklistProgress(
+            req.params.machineId,
+            req.body,
+            req.user?.id
+        );
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
 // POST /api/checklist/:machineId - Create checklist item (with optional image upload)
 exports.createChecklistItem = [
     upload.single('image'),
     async (req, res, next) => {
         try {
-            const { checkpoint, description, specification, method, timing, status, comments, sort_order } = req.body;
+            return res.status(400).json({
+                success: false,
+                message: 'Machine-specific checklist creation is disabled. Use POST /api/checklist/generic to create generic checklist items.'
+            });
+        } catch (error) { next(error); }
+    }
+];
+
+// POST /api/checklist/generic - Create generic checklist item and sync to all machines
+exports.createGenericChecklistItem = [
+    upload.single('image'),
+    async (req, res, next) => {
+        try {
+            const { checkpoint, description, specification, method, timing, sort_order } = req.body;
             if (!checkpoint) {
                 return res.status(400).json({ success: false, message: 'checkpoint is required' });
             }
-
             const image = req.file ? req.file.buffer : null;
-
-            const result = await ChecklistService.createChecklistItem({
-                machine_id: req.params.machineId,
+            const data = await ChecklistService.createGenericChecklistItem({
                 checkpoint,
                 description,
                 specification,
                 method,
                 image,
                 timing,
-                status,
-                comments,
-                checked_by: req.user?.id,
-                sort_order: sort_order !== undefined ? parseInt(sort_order) : undefined
+                sort_order: sort_order !== undefined ? parseInt(sort_order) : undefined,
+                checked_by: req.user?.id
             });
-            res.status(201).json({ success: true, data: result });
+            res.status(201).json({ success: true, data });
         } catch (error) { next(error); }
     }
 ];
@@ -97,12 +125,22 @@ exports.deleteChecklistItem = async (req, res, next) => {
 // POST /api/checklist/:machineId/bulk - Bulk create checklist items
 exports.bulkCreateChecklist = async (req, res, next) => {
     try {
+        return res.status(400).json({
+            success: false,
+            message: 'Machine-specific bulk checklist creation is disabled. Use POST /api/checklist/generic/bulk.'
+        });
+    } catch (error) { next(error); }
+};
+
+// POST /api/checklist/generic/bulk - Bulk create generic checklist and sync to all machines
+exports.bulkCreateGenericChecklist = async (req, res, next) => {
+    try {
         const { items } = req.body;
         if (!items || !Array.isArray(items) || items.length === 0) {
             return res.status(400).json({ success: false, message: 'items array is required' });
         }
-        const result = await ChecklistService.bulkCreateChecklist(req.params.machineId, items);
-        res.status(201).json({ success: true, data: result });
+        const data = await ChecklistService.bulkCreateGenericChecklist(items, req.user?.id);
+        res.status(201).json({ success: true, data });
     } catch (error) { next(error); }
 };
 
@@ -115,5 +153,13 @@ exports.reorderChecklist = async (req, res, next) => {
         }
         const result = await ChecklistService.reorderChecklist(req.params.machineId, ordered_ids);
         res.json({ success: true, message: 'Checklist reordered successfully', data: result });
+    } catch (error) { next(error); }
+};
+
+// POST /api/checklist/template/sync/:sourceMachineId - Sync one machine checklist template to all machines
+exports.syncChecklistTemplate = async (req, res, next) => {
+    try {
+        const data = await ChecklistService.syncChecklistTemplateAcrossMachines(req.params.sourceMachineId);
+        res.json({ success: true, message: 'Checklist template synced for all machines', data });
     } catch (error) { next(error); }
 };

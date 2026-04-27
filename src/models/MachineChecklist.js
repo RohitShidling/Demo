@@ -1,7 +1,7 @@
 const { getPool } = require('../config/database');
 
 class MachineChecklistModel {
-    static async create({ machine_id, checkpoint, description, specification, method, image, timing, status, comments, checked_by, sort_order }) {
+    static async create({ machine_id, operator_name, cell_incharge_name, checkpoint, description, specification, method, image, timing, status, comments, checked_by, sort_order }) {
         const pool = getPool();
 
         // If sort_order not provided, set to max+1 for this machine
@@ -14,11 +14,11 @@ class MachineChecklistModel {
         }
 
         const query = `
-            INSERT INTO machine_checklists (machine_id, checkpoint, description, specification, method, image, timing, status, comments, checked_by, sort_order)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO machine_checklists (machine_id, operator_name, cell_incharge_name, checkpoint, description, specification, method, image, timing, status, comments, checked_by, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
         const [result] = await pool.execute(query, [
-            machine_id, checkpoint, description || null, specification || null,
+            machine_id, operator_name || null, cell_incharge_name || null, checkpoint, description || null, specification || null,
             method || null, image || null, timing || null, status || 'PENDING',
             comments || null, checked_by || null, sort_order
         ]);
@@ -64,6 +64,8 @@ class MachineChecklistModel {
         const values = [];
 
         if (updates.checkpoint !== undefined) { fields.push('checkpoint = ?'); values.push(updates.checkpoint); }
+        if (updates.operator_name !== undefined) { fields.push('operator_name = ?'); values.push(updates.operator_name); }
+        if (updates.cell_incharge_name !== undefined) { fields.push('cell_incharge_name = ?'); values.push(updates.cell_incharge_name); }
         if (updates.description !== undefined) { fields.push('description = ?'); values.push(updates.description); }
         if (updates.specification !== undefined) { fields.push('specification = ?'); values.push(updates.specification); }
         if (updates.method !== undefined) { fields.push('method = ?'); values.push(updates.method); }
@@ -138,9 +140,9 @@ class MachineChecklistModel {
                 m.machine_id,
                 m.machine_name,
                 COUNT(mc.id) AS total_items,
-                SUM(CASE WHEN mc.status IN ('OK') THEN 1 ELSE 0 END) AS completed_items,
-                SUM(CASE WHEN mc.status = 'PENDING' THEN 1 ELSE 0 END) AS pending_items,
-                SUM(CASE WHEN mc.status = 'NOT_OK' THEN 1 ELSE 0 END) AS not_ok_items,
+                SUM(CASE WHEN mc.status IS NOT NULL AND mc.status <> 'PENDING' THEN 1 ELSE 0 END) AS completed_items,
+                SUM(CASE WHEN mc.status IN ('PENDING') THEN 1 ELSE 0 END) AS pending_items,
+                SUM(CASE WHEN mc.status IN ('NOT_OK', 'NOT_DONE') THEN 1 ELSE 0 END) AS not_ok_items,
                 MAX(mc.updated_at) AS last_updated,
                 MIN(mc.created_at) AS created_at
             FROM machines m

@@ -282,7 +282,37 @@ const options = {
                 get: { tags: ['Machine Checklist'], summary: 'Get all checklists grouped by machine', responses: { '200': { description: 'All checklists' } } }
             },
             '/checklist/summary': {
-                get: { tags: ['Machine Checklist'], summary: 'Get checklist summary (completion stats per machine)', responses: { '200': { description: 'Summary data' } } }
+                get: { tags: ['Machine Checklist'], summary: 'Get checklist summary (completion stats per machine)', responses: { '200': { description: 'Summary data with checklist_status = COMPLETED or NOT_COMPLETED per machine' } } }
+            },
+            '/checklist/generic': {
+                get: {
+                    tags: ['Machine Checklist'],
+                    summary: 'Get generic checklist definition',
+                    description: 'Returns the common checklist template used for all machines.',
+                    responses: { '200': { description: 'Generic checklist definition' } }
+                },
+                post: {
+                    tags: ['Machine Checklist'],
+                    summary: 'Create generic checklist item',
+                    description: 'Creates a common checklist item (not machine-specific) and automatically syncs it to all machines.',
+                    requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', required: ['checkpoint'], properties: { checkpoint: { type: 'string' }, description: { type: 'string' }, specification: { type: 'string' }, method: { type: 'string', enum: ['VISUAL_BY_HAND', 'FUNCTIONAL_TEST', 'MEASUREMENT'] }, image: { type: 'string', format: 'binary' }, timing: { type: 'string' }, sort_order: { type: 'integer' } } } } } },
+                    responses: {
+                        '201': { description: 'Generic checklist item created and synced' },
+                        '400': { description: 'Validation error or no machines configured' }
+                    }
+                }
+            },
+            '/checklist/generic/bulk': {
+                post: {
+                    tags: ['Machine Checklist'],
+                    summary: 'Bulk create generic checklist items',
+                    description: 'Creates multiple common checklist items and automatically syncs to all machines.',
+                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['items'], properties: { items: { type: 'array', items: { type: 'object', required: ['checkpoint'], properties: { checkpoint: { type: 'string' }, description: { type: 'string' }, specification: { type: 'string' }, method: { type: 'string', enum: ['VISUAL_BY_HAND', 'FUNCTIONAL_TEST', 'MEASUREMENT'] }, image: { type: 'string', description: 'Base64 encoded image' }, timing: { type: 'string' }, sort_order: { type: 'integer' } } } } } } } } },
+                    responses: {
+                        '201': { description: 'Generic checklist items created and synced' },
+                        '400': { description: 'Validation error or no machines configured' }
+                    }
+                }
             },
             '/checklist/item/{itemId}': {
                 get: {
@@ -293,8 +323,8 @@ const options = {
                 put: {
                     tags: ['Machine Checklist'], summary: 'Update a checklist item',
                     parameters: [{ name: 'itemId', in: 'path', required: true, schema: { type: 'integer' } }],
-                    requestBody: { content: { 'multipart/form-data': { schema: { type: 'object', properties: { checkpoint: { type: 'string' }, description: { type: 'string' }, specification: { type: 'string' }, method: { type: 'string' }, image: { type: 'string', format: 'binary' }, timing: { type: 'string' }, status: { type: 'string', enum: ['PENDING', 'OK', 'NOT_OK', 'NA'] }, comments: { type: 'string' }, sort_order: { type: 'integer' } } } } } },
-                    responses: { '200': { description: 'Item updated' }, '404': { description: 'Item not found' } }
+                    requestBody: { content: { 'multipart/form-data': { schema: { type: 'object', properties: { operator_name: { type: 'string', example: 'Ravi Kumar' }, cell_incharge_name: { type: 'string', example: 'Prakash S' }, checkpoint: { type: 'string' }, description: { type: 'string' }, specification: { type: 'string' }, method: { type: 'string', enum: ['VISUAL_BY_HAND', 'FUNCTIONAL_TEST', 'MEASUREMENT'] }, image: { type: 'string', format: 'binary' }, timing: { type: 'string' }, status: { type: 'string', enum: ['PENDING', 'OK', 'NOT_OK', 'NA', 'DONE', 'NOT_DONE'] }, comments: { type: 'string' }, sort_order: { type: 'integer' } } } } } },
+                    responses: { '200': { description: 'Item updated' }, '400': { description: 'Invalid status or method' }, '404': { description: 'Item not found' } }
                 },
                 delete: {
                     tags: ['Machine Checklist'], summary: 'Delete a checklist item',
@@ -306,21 +336,74 @@ const options = {
                 get: {
                     tags: ['Machine Checklist'], summary: 'Get checklist for a specific machine',
                     parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
-                    responses: { '200': { description: 'Machine checklist with items ordered by sort_order' }, '404': { description: 'Machine not found' } }
+                    responses: { '200': { description: 'Machine checklist with items ordered by sort_order, including checklist_loaded_at, last_saved_on, and checklist_status (COMPLETED/NOT_COMPLETED)' }, '404': { description: 'Machine not found' } }
                 },
                 post: {
-                    tags: ['Machine Checklist'], summary: 'Create a new checklist item for a machine',
+                    tags: ['Machine Checklist'], summary: 'Create a new checklist item for a machine (disabled)',
                     parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
-                    requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', required: ['checkpoint'], properties: { checkpoint: { type: 'string', example: 'Cleanliness Check' }, description: { type: 'string', example: 'Check machine surface cleanliness' }, specification: { type: 'string', example: 'No visible dust or debris' }, method: { type: 'string', example: 'Visual Inspection' }, image: { type: 'string', format: 'binary' }, timing: { type: 'string', example: 'Before Shift' }, status: { type: 'string', enum: ['PENDING', 'OK', 'NOT_OK', 'NA'], default: 'PENDING' }, comments: { type: 'string' }, sort_order: { type: 'integer' } } } } } },
-                    responses: { '201': { description: 'Item created' }, '400': { description: 'checkpoint is required' }, '404': { description: 'Machine not found' } }
+                    requestBody: { required: false },
+                    responses: { '400': { description: 'Machine-specific creation is disabled. Use POST /checklist/generic.' } }
+                }
+            },
+            '/checklist/{machineId}/progress': {
+                put: {
+                    tags: ['Machine Checklist'],
+                    summary: 'Save machine-specific checklist progress',
+                    description: 'Updates status/comments per checklist line for one machine and applies operator_name/cell_incharge_name for submitted lines only. Accept each line with either id or checkpoint.',
+                    parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
+                    requestBody: {
+                        required: true,
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    required: ['items'],
+                                    properties: {
+                                        operator_name: { type: 'string', example: 'Ravi Kumar' },
+                                        cell_incharge_name: { type: 'string', example: 'Prakash S' },
+                                        items: {
+                                            type: 'array',
+                                            items: {
+                                                type: 'object',
+                                                properties: {
+                                                    id: { type: 'integer', example: 101 },
+                                                    checkpoint: { type: 'string', example: 'Cleaning' },
+                                                    status: { type: 'string', enum: ['PENDING', 'OK', 'NOT_OK', 'NA', 'DONE', 'NOT_DONE'] },
+                                                    comments: { type: 'string', example: 'Done and verified' }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    responses: {
+                        '200': { description: 'Machine checklist progress saved' },
+                        '400': { description: 'Invalid payload or no matching checklist rows' },
+                        '404': { description: 'Machine not found' }
+                    }
+                }
+            },
+            '/checklist/template/sync/{sourceMachineId}': {
+                post: {
+                    tags: ['Machine Checklist'],
+                    summary: 'Sync same checklist template to all machines',
+                    description: 'Copies checklist structure (checkpoint, description, specification, method, timing, image, sort_order) from source machine to every machine. Completion status, operator_name, and cell_incharge_name stay machine-specific.',
+                    parameters: [{ name: 'sourceMachineId', in: 'path', required: true, schema: { type: 'string' } }],
+                    responses: {
+                        '200': { description: 'Checklist template synced to all machines' },
+                        '400': { description: 'Source machine checklist is empty' },
+                        '404': { description: 'Source machine not found' }
+                    }
                 }
             },
             '/checklist/{machineId}/bulk': {
                 post: {
-                    tags: ['Machine Checklist'], summary: 'Bulk create checklist items for a machine',
+                    tags: ['Machine Checklist'], summary: 'Bulk create checklist items for a machine (disabled)',
                     parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['items'], properties: { items: { type: 'array', items: { type: 'object', required: ['checkpoint'], properties: { checkpoint: { type: 'string' }, description: { type: 'string' }, specification: { type: 'string' }, method: { type: 'string' }, image: { type: 'string', description: 'Base64 encoded image' }, timing: { type: 'string' }, status: { type: 'string', enum: ['PENDING', 'OK', 'NOT_OK', 'NA'] }, comments: { type: 'string' }, sort_order: { type: 'integer' } } } } } } } } },
-                    responses: { '201': { description: 'Items created' } }
+                    requestBody: { required: false },
+                    responses: { '400': { description: 'Machine-specific bulk creation is disabled. Use POST /checklist/generic/bulk.' } }
                 }
             },
             '/checklist/{machineId}/reorder': {

@@ -334,7 +334,7 @@ class WorkOrderService {
                 [m.machine_id]
             );
             let checklistStatus = 'NOT_STARTED';
-            const completedItems = items.filter(i => i.status === 'OK' || i.status === 'NA').length;
+            const completedItems = items.filter(i => String(i.status || '').toUpperCase() !== 'PENDING').length;
             if (items.length > 0) {
                 if (completedItems === 0) checklistStatus = 'NOT_STARTED';
                 else if (completedItems === items.length) checklistStatus = 'COMPLETED';
