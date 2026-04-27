@@ -1,13 +1,31 @@
 const { getPool } = require('../config/database');
 
 class MachineBreakdownModel {
-    static async create({ machine_id, operator_id, problem_description, severity = 'MEDIUM' }) {
+    static async create({
+        machine_id,
+        operator_id,
+        problem_description,
+        severity = 'MEDIUM',
+        breakdown_reason = null,
+        start_time = null,
+        end_time = null,
+        comment = null
+    }) {
         const pool = getPool();
         const query = `
-            INSERT INTO machine_breakdowns (machine_id, operator_id, problem_description, severity)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO machine_breakdowns (machine_id, operator_id, problem_description, severity, breakdown_reason, start_time, end_time, comment)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `;
-        const [result] = await pool.execute(query, [machine_id, operator_id, problem_description, severity]);
+        const [result] = await pool.execute(query, [
+            machine_id,
+            operator_id,
+            problem_description,
+            severity,
+            breakdown_reason,
+            start_time,
+            end_time,
+            comment
+        ]);
         return result.insertId;
     }
 

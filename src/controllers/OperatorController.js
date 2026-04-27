@@ -131,15 +131,31 @@ exports.getAllAssignments = async (req, res, next) => {
 // ── Machine Breakdown ──
 exports.reportBreakdown = async (req, res, next) => {
     try {
-        const { machine_id, problem_description, severity } = req.body;
-        if (!machine_id || !problem_description) {
-            return res.status(400).json({ success: false, message: 'machine_id and problem_description required' });
+        const machine_id = req.params.machineId || req.body.machine_id;
+        const { problem_description, severity, breakdown_reason, start_time, end_time, comment } = req.body;
+        if (!machine_id) {
+            return res.status(400).json({ success: false, message: 'machineId path parameter (or machine_id in body) is required' });
         }
-        const data = await OperatorService.reportBreakdown({ machine_id, operator_id: req.user.id, problem_description, severity });
+        const data = await OperatorService.reportBreakdown({
+            machine_id,
+            operator_id: req.user.id,
+            problem_description,
+            severity,
+            breakdown_reason,
+            start_time,
+            end_time,
+            comment
+        });
         res.status(201).json({ success: true, data });
 
         const ns = getIO(req);
         if (ns) ns.emit('breakdown:reported', { data, timestamp: new Date().toISOString() });
+    } catch (error) { next(error); }
+};
+
+exports.getBreakdownReasons = async (req, res, next) => {
+    try {
+        res.json({ success: true, data: OperatorService.getBreakdownReasons() });
     } catch (error) { next(error); }
 };
 

@@ -27,6 +27,8 @@ router.get('/machine-operators/:machineId', OperatorController.getMachineOperato
 router.get('/assignments', OperatorController.getAllAssignments);
 
 // Machine Breakdowns
+router.get('/breakdowns/reasons', OperatorController.getBreakdownReasons);
+router.post('/breakdowns/:machineId', OperatorController.reportBreakdown);
 router.post('/breakdowns', OperatorController.reportBreakdown);
 router.patch('/breakdowns/:breakdownId/status', OperatorController.updateBreakdownStatus);
 router.get('/breakdowns/machine/:machineId', OperatorController.getBreakdownsByMachine);

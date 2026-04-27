@@ -9,6 +9,19 @@ const WorkOrderMachineModel = require('../models/WorkOrderMachine');
 const ProductionLogModel = require('../models/ProductionLog');
 const logger = require('../utils/logger');
 
+const BREAKDOWN_REASONS = [
+    'TOOL_CHANGER',
+    'MACHINE_BREAKDOWN',
+    'MONTHLY_PM',
+    'QC_ISSUES',
+    'CORRECTION',
+    'WAITING_FOR_RM',
+    'POWER_CUT',
+    'SHIFT_CHANGE',
+    'NO_OPERATOR',
+    'OTHERS'
+];
+
 class OperatorService {
     // ── Machine Status (Checklist) ──
     async updateMachineStatus(machine_id, status) {
@@ -143,13 +156,49 @@ class OperatorService {
     }
 
     // ── Machine Breakdown ──
-    async reportBreakdown({ machine_id, operator_id, problem_description, severity }) {
+    normalizeBreakdownReason(reason) {
+        if (reason === undefined || reason === null || String(reason).trim() === '') {
+            const e = new Error('breakdown_reason is required');
+            e.statusCode = 400;
+            throw e;
+        }
+        const normalized = String(reason).trim().toUpperCase().replace(/\s+/g, '_');
+        if (!BREAKDOWN_REASONS.includes(normalized)) {
+            const e = new Error(`Invalid breakdown_reason. Allowed values: ${BREAKDOWN_REASONS.join(', ')}`);
+            e.statusCode = 400;
+            throw e;
+        }
+        return normalized;
+    }
+
+    async reportBreakdown({ machine_id, operator_id, problem_description, severity, breakdown_reason, start_time, end_time, comment }) {
         const machine = await MachineModel.findById(machine_id);
         if (!machine) { const e = new Error('Machine not found'); e.statusCode = 404; throw e; }
-        const id = await MachineBreakdownModel.create({ machine_id, operator_id, problem_description, severity });
+
+        const normalizedReason = this.normalizeBreakdownReason(breakdown_reason);
+        const normalizedComment = comment !== undefined ? comment : null;
+        const reasonAsDescription = problem_description || normalizedReason.replace(/_/g, ' ');
+
+        if (start_time && end_time && new Date(end_time).getTime() < new Date(start_time).getTime()) {
+            const e = new Error('end_time cannot be earlier than start_time');
+            e.statusCode = 400;
+            throw e;
+        }
+
+        const id = await MachineBreakdownModel.create({
+            machine_id,
+            operator_id,
+            problem_description: reasonAsDescription,
+            severity,
+            breakdown_reason: normalizedReason,
+            start_time: start_time || null,
+            end_time: end_time || null,
+            comment: normalizedComment
+        });
+
         // Auto-set machine status to MAINTENANCE when breakdown reported
         await MachineModel.updateStatus(machine_id, 'MAINTENANCE');
-        logger.info(`Breakdown reported on machine ${machine_id}: ${problem_description}`);
+        logger.info(`Breakdown reported on machine ${machine_id}: ${normalizedReason}`);
         return await MachineBreakdownModel.findById(id);
     }
 
@@ -175,6 +224,10 @@ class OperatorService {
 
     async getAllBreakdowns() {
         return await MachineBreakdownModel.findAll();
+    }
+
+    getBreakdownReasons() {
+        return BREAKDOWN_REASONS;
     }
 }
 

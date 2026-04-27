@@ -720,11 +720,25 @@ const options = {
             },
             '/operator/breakdowns': {
                 post: {
-                    tags: ['Operators'], summary: 'Report machine breakdown',
-                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['machine_id', 'problem_description'], properties: { machine_id: { type: 'string' }, problem_description: { type: 'string' }, severity: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] } } } } } },
+                    tags: ['Operators'], summary: 'Report machine breakdown (legacy body machine_id)',
+                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['machine_id', 'breakdown_reason'], properties: { machine_id: { type: 'string' }, breakdown_reason: { type: 'string', enum: ['TOOL_CHANGER', 'MACHINE_BREAKDOWN', 'MONTHLY_PM', 'QC_ISSUES', 'CORRECTION', 'WAITING_FOR_RM', 'POWER_CUT', 'SHIFT_CHANGE', 'NO_OPERATOR', 'OTHERS'] }, start_time: { type: 'string', format: 'date-time' }, end_time: { type: 'string', format: 'date-time' }, comment: { type: 'string' }, severity: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] } } } } } },
                     responses: { '201': { description: 'Breakdown reported' } }
                 },
                 get: { tags: ['Operators'], summary: 'Get all breakdowns', responses: { '200': { description: 'All breakdowns' } } }
+            },
+            '/operator/breakdowns/reasons': {
+                get: {
+                    tags: ['Operators'], summary: 'Get common machine breakdown reasons',
+                    responses: { '200': { description: 'List of allowed common breakdown reasons' } }
+                }
+            },
+            '/operator/breakdowns/{machineId}': {
+                post: {
+                    tags: ['Operators'], summary: 'Report machine breakdown by machineId',
+                    parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
+                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['breakdown_reason'], properties: { breakdown_reason: { type: 'string', enum: ['TOOL_CHANGER', 'MACHINE_BREAKDOWN', 'MONTHLY_PM', 'QC_ISSUES', 'CORRECTION', 'WAITING_FOR_RM', 'POWER_CUT', 'SHIFT_CHANGE', 'NO_OPERATOR', 'OTHERS'] }, start_time: { type: 'string', format: 'date-time' }, end_time: { type: 'string', format: 'date-time' }, comment: { type: 'string' }, severity: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] } } } } } },
+                    responses: { '201': { description: 'Breakdown reported for machine' }, '404': { description: 'Machine not found' } }
+                }
             },
             '/operator/breakdowns/{breakdownId}/status': {
                 patch: {

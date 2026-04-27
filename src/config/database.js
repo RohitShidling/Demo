@@ -297,6 +297,10 @@ const initTables = async () => {
                 operator_id INT NOT NULL,
                 problem_description TEXT NOT NULL,
                 severity ENUM('LOW', 'MEDIUM', 'HIGH', 'CRITICAL') DEFAULT 'MEDIUM',
+                breakdown_reason VARCHAR(80),
+                start_time DATETIME(3),
+                end_time DATETIME(3),
+                comment TEXT,
                 status ENUM('REPORTED', 'ACKNOWLEDGED', 'IN_REPAIR', 'RESOLVED') DEFAULT 'REPORTED',
                 reported_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
                 resolved_at DATETIME(3),
@@ -531,6 +535,20 @@ const initTables = async () => {
         // Migration: Add machine_id to notifications for machine-specific alerts
         try {
             await pool.query(`ALTER TABLE notifications ADD COLUMN machine_id VARCHAR(50) NULL AFTER type`);
+        } catch (e) { /* Column may already exist, ignore */ }
+
+        // Migration: Add machine breakdown common reason and machine-specific timing/comment
+        try {
+            await pool.query(`ALTER TABLE machine_breakdowns ADD COLUMN breakdown_reason VARCHAR(80) NULL AFTER severity`);
+        } catch (e) { /* Column may already exist, ignore */ }
+        try {
+            await pool.query(`ALTER TABLE machine_breakdowns ADD COLUMN start_time DATETIME(3) NULL AFTER breakdown_reason`);
+        } catch (e) { /* Column may already exist, ignore */ }
+        try {
+            await pool.query(`ALTER TABLE machine_breakdowns ADD COLUMN end_time DATETIME(3) NULL AFTER start_time`);
+        } catch (e) { /* Column may already exist, ignore */ }
+        try {
+            await pool.query(`ALTER TABLE machine_breakdowns ADD COLUMN comment TEXT NULL AFTER end_time`);
         } catch (e) { /* Column may already exist, ignore */ }
 
         logger.info('Database tables initialized with all migrations applied successfully.');
