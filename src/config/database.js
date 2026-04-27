@@ -225,6 +225,10 @@ const initTables = async () => {
                 supervisor_name VARCHAR(100),
                 part_image LONGBLOB,
                 rejected_count INT DEFAULT 1,
+                rework_status ENUM('PENDING', 'REWORKED') DEFAULT 'PENDING',
+                rework_comments TEXT,
+                reworked_by INT,
+                reworked_at DATETIME(3),
                 created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
                 FOREIGN KEY (machine_id) REFERENCES machines(machine_id) ON DELETE CASCADE
             )
@@ -234,6 +238,10 @@ const initTables = async () => {
         try { await pool.query(`ALTER TABLE part_rejections ADD COLUMN rework_reason TEXT NULL AFTER rejection_reason`); } catch (e) { /* ignore */ }
         try { await pool.query(`ALTER TABLE part_rejections ADD COLUMN part_description TEXT NULL AFTER rework_reason`); } catch (e) { /* ignore */ }
         try { await pool.query(`ALTER TABLE part_rejections ADD COLUMN supervisor_name VARCHAR(100) NULL AFTER part_description`); } catch (e) { /* ignore */ }
+        try { await pool.query(`ALTER TABLE part_rejections ADD COLUMN rework_status ENUM('PENDING', 'REWORKED') DEFAULT 'PENDING' AFTER rejected_count`); } catch (e) { /* ignore */ }
+        try { await pool.query(`ALTER TABLE part_rejections ADD COLUMN rework_comments TEXT NULL AFTER rework_status`); } catch (e) { /* ignore */ }
+        try { await pool.query(`ALTER TABLE part_rejections ADD COLUMN reworked_by INT NULL AFTER rework_comments`); } catch (e) { /* ignore */ }
+        try { await pool.query(`ALTER TABLE part_rejections ADD COLUMN reworked_at DATETIME(3) NULL AFTER reworked_by`); } catch (e) { /* ignore */ }
 
         // ─────────────────────────────────────────────────
         // Table 9: Workflow Steps (for work orders)

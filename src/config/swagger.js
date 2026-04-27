@@ -668,16 +668,45 @@ const options = {
             '/operator/rejections': {
                 post: {
                     tags: ['Operators'], summary: 'Upload part rejection',
-                    requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', required: ['machine_id', 'rejection_reason'], properties: { machine_id: { type: 'string', example: 'MACH-A1B2C3D4' }, work_order_id: { type: 'string', example: 'WO-3FA91D2B' }, rejection_reason: { type: 'string', example: 'Edge crack on part' }, rework_reason: { type: 'string', example: 'Re-polish and re-inspect required' }, part_description: { type: 'string', example: 'Pressure cooker lid outer ring' }, supervisor_name: { type: 'string', example: 'Supervisor Ravi' }, rejected_count: { type: 'integer', default: 1, example: 2 }, part_image: { type: 'string', format: 'binary' } } } } } },
+                    requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', required: ['machine_id', 'rejection_reason'], properties: { machine_id: { type: 'string', example: 'MACH-A1B2C3D4' }, work_order_id: { type: 'string', example: 'WO-3FA91D2B' }, rejection_reason: { type: 'string', example: 'Edge crack on part' }, rework_reason: { type: 'string', enum: ['SCRATCH_MARK', 'OILY_CONTENT'], example: 'SCRATCH_MARK' }, part_description: { type: 'string', example: 'Pressure cooker lid outer ring' }, supervisor_name: { type: 'string', example: 'Supervisor Ravi' }, rejected_count: { type: 'integer', default: 1, example: 2 }, part_image: { type: 'string', format: 'binary' } } } } } },
                     responses: { '201': { description: 'Rejection reported' } }
                 },
                 get: { tags: ['Operators'], summary: 'Get all rejections', responses: { '200': { description: 'All rejections' } } }
+            },
+            '/operator/rejections/{machineId}': {
+                post: {
+                    tags: ['Operators'], summary: 'Upload part rejection for specific machine',
+                    parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
+                    requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', required: ['rejection_reason'], properties: { work_order_id: { type: 'string', example: 'WO-3FA91D2B' }, rejection_reason: { type: 'string', example: 'Edge crack on part' }, rework_reason: { type: 'string', enum: ['SCRATCH_MARK', 'OILY_CONTENT'], example: 'OILY_CONTENT' }, part_description: { type: 'string', example: 'Pressure cooker lid outer ring' }, supervisor_name: { type: 'string', example: 'Supervisor Ravi' }, rejected_count: { type: 'integer', default: 1, example: 2 }, part_image: { type: 'string', format: 'binary' } } } } } },
+                    responses: { '201': { description: 'Rejection reported' }, '404': { description: 'Machine not found' } }
+                }
+            },
+            '/operator/rejections/rework-reasons': {
+                get: {
+                    tags: ['Operators'], summary: 'Get allowed rework reasons',
+                    responses: { '200': { description: 'Allowed rework reasons (SCRATCH_MARK, OILY_CONTENT)' } }
+                }
             },
             '/operator/rejections/machine/{machineId}': {
                 get: {
                     tags: ['Operators'], summary: 'Get rejections by machine',
                     parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
                     responses: { '200': { description: 'Machine rejections' } }
+                }
+            },
+            '/operator/rejections/machine/{machineId}/rework/pending': {
+                get: {
+                    tags: ['Operators'], summary: 'Get pending rework rejected parts for machine',
+                    parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
+                    responses: { '200': { description: 'Machine-wise pending rework rejected parts' }, '404': { description: 'Machine not found' } }
+                }
+            },
+            '/operator/rejections/{rejectionId}/rework': {
+                patch: {
+                    tags: ['Operators'], summary: 'Mark rejected part as reworked',
+                    parameters: [{ name: 'rejectionId', in: 'path', required: true, schema: { type: 'integer' } }],
+                    requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['rework_reason'], properties: { rework_reason: { type: 'string', enum: ['SCRATCH_MARK', 'OILY_CONTENT'] }, rework_comments: { type: 'string', example: 'Surface cleaned and polished' } } } } } },
+                    responses: { '200': { description: 'Rework marked completed' }, '404': { description: 'Rejected part not found' } }
                 }
             },
             '/operator/skills': {

@@ -127,6 +127,41 @@ class PartRejectionModel {
         const [rows] = await pool.execute(query);
         return rows;
     }
+
+    static async findPendingReworkByMachine(machine_id) {
+        const pool = getPool();
+        const query = `
+            SELECT pr.*, m.machine_name, m.ingest_path, wo.work_order_name, wo.description as work_order_description, ou.username as operator_name
+            FROM part_rejections pr
+            JOIN machines m ON pr.machine_id = m.machine_id
+            LEFT JOIN work_orders wo ON pr.work_order_id = wo.work_order_id
+            LEFT JOIN operator_users ou ON pr.operator_id = ou.id
+            WHERE pr.machine_id = ? AND pr.rework_status = 'PENDING'
+            ORDER BY pr.created_at DESC
+        `;
+        const [rows] = await pool.execute(query, [machine_id]);
+        return rows;
+    }
+
+    static async updateRework(id, { rework_status, rework_reason, rework_comments, reworked_by }) {
+        const pool = getPool();
+        const query = `
+            UPDATE part_rejections
+            SET rework_status = ?,
+                rework_reason = ?,
+                rework_comments = ?,
+                reworked_by = ?,
+                reworked_at = CURRENT_TIMESTAMP(3)
+            WHERE id = ?
+        `;
+        await pool.execute(query, [
+            rework_status,
+            rework_reason || null,
+            rework_comments || null,
+            reworked_by || null,
+            id
+        ]);
+    }
 }
 
 module.exports = PartRejectionModel;

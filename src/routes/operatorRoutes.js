@@ -10,9 +10,13 @@ router.get('/checklist', OperatorController.getMachineChecklist);
 router.post('/checklist/update', OperatorController.updateMachineStatus);
 
 // Part Rejections
+router.post('/rejections/:machineId', OperatorController.uploadRejection);
 router.post('/rejections', OperatorController.uploadRejection);
 router.get('/rejections', OperatorController.getAllRejections);
 router.get('/rejections/machine/:machineId', OperatorController.getRejectionsByMachine);
+router.get('/rejections/rework-reasons', OperatorController.getReworkReasons);
+router.get('/rejections/machine/:machineId/rework/pending', OperatorController.getPendingReworkByMachine);
+router.patch('/rejections/:rejectionId/rework', OperatorController.markReworkCompleted);
 
 // Operator Skills
 router.post('/skills', OperatorController.updateSkills);

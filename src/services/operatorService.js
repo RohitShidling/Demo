@@ -21,8 +21,20 @@ const BREAKDOWN_REASONS = [
     'NO_OPERATOR',
     'OTHERS'
 ];
+const REWORK_REASONS = ['SCRATCH_MARK', 'OILY_CONTENT'];
 
 class OperatorService {
+    normalizeReworkReason(reason) {
+        if (reason === undefined || reason === null || String(reason).trim() === '') return null;
+        const normalized = String(reason).trim().toUpperCase().replace(/\s+/g, '_');
+        if (!REWORK_REASONS.includes(normalized)) {
+            const e = new Error(`Invalid rework_reason. Allowed values: ${REWORK_REASONS.join(', ')}`);
+            e.statusCode = 400;
+            throw e;
+        }
+        return normalized;
+    }
+
     // ── Machine Status (Checklist) ──
     async updateMachineStatus(machine_id, status) {
         const machine = await MachineModel.findById(machine_id);
@@ -62,12 +74,13 @@ class OperatorService {
         const machine = await MachineModel.findById(machine_id);
         if (!machine) { const e = new Error('Machine not found'); e.statusCode = 404; throw e; }
 
+        const normalizedReworkReason = this.normalizeReworkReason(rework_reason);
         const id = await PartRejectionModel.create({
             machine_id,
             work_order_id,
             operator_id,
             rejection_reason,
-            rework_reason,
+            rework_reason: normalizedReworkReason,
             part_description,
             supervisor_name,
             part_image,
@@ -113,6 +126,37 @@ class OperatorService {
 
     async getAllRejections() {
         return await PartRejectionModel.findAll();
+    }
+
+    async getPendingReworkByMachine(machine_id) {
+        const machine = await MachineModel.findById(machine_id);
+        if (!machine) { const e = new Error('Machine not found'); e.statusCode = 404; throw e; }
+        return await PartRejectionModel.findPendingReworkByMachine(machine_id);
+    }
+
+    async markReworkCompleted(rejection_id, { rework_reason, rework_comments, reworked_by }) {
+        const rejection = await PartRejectionModel.findById(rejection_id);
+        if (!rejection) { const e = new Error('Rejected part not found'); e.statusCode = 404; throw e; }
+
+        const normalizedReworkReason = this.normalizeReworkReason(rework_reason);
+        if (!normalizedReworkReason) {
+            const e = new Error('rework_reason is required');
+            e.statusCode = 400;
+            throw e;
+        }
+
+        await PartRejectionModel.updateRework(rejection_id, {
+            rework_status: 'REWORKED',
+            rework_reason: normalizedReworkReason,
+            rework_comments,
+            reworked_by
+        });
+        logger.info(`Rejected part ${rejection_id} marked as reworked`);
+        return await PartRejectionModel.findById(rejection_id);
+    }
+
+    getReworkReasons() {
+        return REWORK_REASONS;
     }
 
     // ── Operator Skills ──

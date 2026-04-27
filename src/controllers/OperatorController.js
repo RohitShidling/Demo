@@ -34,7 +34,8 @@ exports.uploadRejection = [
     upload.single('part_image'),
     async (req, res, next) => {
         try {
-            const { machine_id, work_order_id, rejection_reason, rework_reason, part_description, supervisor_name, rejected_count } = req.body;
+            const machine_id = req.params.machineId || req.body.machine_id;
+            const { work_order_id, rejection_reason, rework_reason, part_description, supervisor_name, rejected_count } = req.body;
             if (!machine_id || !rejection_reason) {
                 return res.status(400).json({ success: false, message: 'machine_id and rejection_reason required' });
             }
@@ -62,6 +63,30 @@ exports.getRejectionsByMachine = async (req, res, next) => {
 exports.getAllRejections = async (req, res, next) => {
     try {
         const data = await OperatorService.getAllRejections();
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+exports.getReworkReasons = async (req, res, next) => {
+    try {
+        res.json({ success: true, data: OperatorService.getReworkReasons() });
+    } catch (error) { next(error); }
+};
+
+exports.getPendingReworkByMachine = async (req, res, next) => {
+    try {
+        const data = await OperatorService.getPendingReworkByMachine(req.params.machineId);
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
+
+exports.markReworkCompleted = async (req, res, next) => {
+    try {
+        const { rework_reason, rework_comments } = req.body;
+        const data = await OperatorService.markReworkCompleted(
+            parseInt(req.params.rejectionId, 10),
+            { rework_reason, rework_comments, reworked_by: req.user?.id }
+        );
         res.json({ success: true, data });
     } catch (error) { next(error); }
 };
