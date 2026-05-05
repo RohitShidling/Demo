@@ -74,7 +74,8 @@ exports.getHistory = async (req, res, next) => {
 
 exports.getAllMachines = async (req, res, next) => {
     try {
-        const data = await MachineService.getAllMachines();
+        const includeImages = String(req.query.include_images || '').toLowerCase() === 'true';
+        const data = await MachineService.getAllMachines({ includeImages });
         res.json({ success: true, data });
     } catch (error) { next(error); }
 };

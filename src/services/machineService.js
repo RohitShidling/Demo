@@ -99,7 +99,7 @@ class MachineService {
         }));
     }
 
-    async getAllMachines() {
+    async getAllMachines({ includeImages = false } = {}) {
         const machines = await MachineModel.findAll();
         const result = await Promise.all(machines.map(async (m) => {
             const activeRun = await MachineRunModel.findActiveRun(m.machine_id);
@@ -109,7 +109,8 @@ class MachineService {
 
             return {
                 machine_id: m.machine_id, machine_name: m.machine_name,
-                machine_image: m.machine_image ? m.machine_image.toString('base64') : null,
+                // Keep list payload small by default to avoid frontend freezes/blank screens.
+                machine_image: includeImages && m.machine_image ? m.machine_image.toString('base64') : null,
                 ingest_path: m.ingest_path,
                 status: m.status || (activeRun ? 'RUNNING' : 'NOT_STARTED'),
                 total_rejected: totalRejected,
