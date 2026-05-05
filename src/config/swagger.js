@@ -39,6 +39,435 @@ const options = {
                         machine_id: { type: 'string', example: 'MACH-A1B2C3D4' },
                         status: { type: 'string', enum: ['RUNNING', 'MAINTENANCE', 'NOT_STARTED'], example: 'RUNNING' }
                     }
+                },
+                // Standard success envelope used across most controllers
+                SuccessResponse: {
+                    description: 'Success response. Some endpoints return an envelope {success,data,...} while others return raw JSON (object/array).',
+                    oneOf: [
+                        {
+                            type: 'object',
+                            properties: {
+                                success: { type: 'boolean', example: true },
+                                message: { type: 'string', example: 'Operation completed successfully' },
+                                statusCode: { type: 'integer', example: 200 },
+                                data: {
+                                    description: 'Response payload (varies per endpoint)',
+                                    oneOf: [
+                                        { type: 'object', additionalProperties: true, example: {} },
+                                        { type: 'array', items: { type: 'object', additionalProperties: true }, example: [{ }] }
+                                    ]
+                                },
+                                pagination: {
+                                    type: 'object',
+                                    properties: {
+                                        currentPage: { type: 'integer', example: 1 },
+                                        itemsPerPage: { type: 'integer', example: 10 },
+                                        totalItems: { type: 'integer', example: 100 },
+                                        totalPages: { type: 'integer', example: 10 }
+                                    },
+                                    additionalProperties: true
+                                },
+                                conflict: { type: 'object', additionalProperties: true }
+                            },
+                            additionalProperties: true
+                        },
+                        {
+                            type: 'object',
+                            additionalProperties: true,
+                            example: { status: 'received' }
+                        },
+                        {
+                            type: 'array',
+                            items: { type: 'object', additionalProperties: true },
+                            example: [{ hour_start: '2026-04-29T08:00:00.000Z', count: 0 }]
+                        }
+                    ]
+                },
+                // Standard error envelope used across most errors
+                ErrorResponse: {
+                    type: 'object',
+                    required: ['message'],
+                    properties: {
+                        success: { type: 'boolean', example: false },
+                        message: { type: 'string', example: 'Validation failed' },
+                        statusCode: { type: 'integer', example: 400 },
+                        errors: {
+                            description: 'Validation or field errors (shape varies)',
+                            oneOf: [
+                                { type: 'array', items: { type: 'object', additionalProperties: true }, example: [{ field: 'email', message: 'Invalid email' }] },
+                                { type: 'object', additionalProperties: true, example: { field: 'email', message: 'Invalid email' } }
+                            ]
+                        },
+                        conflict: {
+                            type: 'object',
+                            additionalProperties: true,
+                            example: {
+                                conflicting_work_order_id: 'WO-2026-001',
+                                conflicting_work_order_name: 'Sample Work Order',
+                                action_required: "Unassign machine from work order 'WO-2026-001' first, then reassign."
+                            }
+                        },
+                        debug: {
+                            description: 'Only included in development',
+                            type: 'object',
+                            additionalProperties: true,
+                            nullable: true,
+                            example: { stack: '...', error: {} }
+                        }
+                    },
+                    additionalProperties: true
+                },
+
+                // ─────────────────────────────────────────────────────────────
+                // Machine response payload schemas (for richer Swagger output)
+                // ─────────────────────────────────────────────────────────────
+                MachineHistoryItem: {
+                    type: 'object',
+                    additionalProperties: true,
+                    properties: {
+                        hour_start: { type: 'string', format: 'date-time', example: '2026-04-29T08:00:00.000Z' },
+                        hour_end: { type: 'string', format: 'date-time', example: '2026-04-29T09:00:00.000Z' },
+                        count: { type: 'integer', example: 42 },
+                        accepted: { type: 'integer', example: 40 },
+                        rejected: { type: 'integer', example: 2 },
+                        run_id: { type: 'integer', example: 17 }
+                    }
+                },
+                MachineIngestResponse: {
+                    type: 'object',
+                    properties: {
+                        status: { type: 'string', example: 'received' }
+                    },
+                    required: ['status'],
+                    additionalProperties: false
+                },
+                MachineStopResponse: {
+                    type: 'object',
+                    properties: {
+                        status: { type: 'string', example: 'stopped' }
+                    },
+                    required: ['status'],
+                    additionalProperties: false
+                },
+                MachineDashboardCurrentRun: {
+                    type: 'object',
+                    additionalProperties: true,
+                    properties: {
+                        start_time: { type: 'string', format: 'date-time', example: '2026-04-29T08:00:00.000Z' },
+                        total_count: { type: 'integer', example: 120 },
+                        accepted_count: { type: 'integer', example: 118 },
+                        rejected_count: { type: 'integer', example: 2 },
+                        last_activity: { type: 'string', format: 'date-time', example: '2026-04-29T08:59:59.000Z' }
+                    }
+                },
+                MachineDashboard: {
+                    type: 'object',
+                    additionalProperties: true,
+                    properties: {
+                        machine_id: { type: 'string', example: 'MACH-A1B2C3D4' },
+                        machine_name: { type: 'string', example: 'CNC Machine 1' },
+                        machine_image: { type: ['string', 'null'], description: 'Base64 encoded image', example: 'iVBORw0KGgo...' },
+                        ingest_path: { type: 'string', example: '/cnc1' },
+                        status: { type: 'string', example: 'RUNNING' },
+                        total_rejected: { type: 'integer', example: 10 },
+                        current_run: { $ref: '#/components/schemas/MachineDashboardCurrentRun' }
+                    }
+                },
+                DowntimeAnalysisData: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                        total_downtime_minutes: { type: 'integer', example: 240 },
+                        planned_downtime: { type: 'integer', example: 120 },
+                        unplanned_downtime: { type: 'integer', example: 120 },
+                        mttr: { type: 'integer', example: 30 },
+                        mtbf: { type: 'integer', example: 1440 }
+                    }
+                },
+                HourlyProductionSlot: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                        hour_label: { type: 'string', example: '08:00' },
+                        hour_start: { type: 'string', format: 'date-time', example: '2026-04-29T08:00:00.000Z' },
+                        hour_end: { type: 'string', format: 'date-time', example: '2026-04-29T09:00:00.000Z' },
+                        total_count: { type: 'integer', example: 12 },
+                        accepted_count: { type: 'integer', example: 10 },
+                        rejected_count: { type: 'integer', example: 2 }
+                    }
+                },
+                HourlyProductionData: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                        machine_id: { type: 'string', example: 'MACH-A1B2C3D4' },
+                        machine_name: { type: 'string', example: 'CNC Machine 1' },
+                        period: { type: 'string', example: 'last_24_hours' },
+                        slots: { type: 'array', items: { $ref: '#/components/schemas/HourlyProductionSlot' } }
+                    }
+                },
+                DailyProductionDay: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                        date: { type: 'string', format: 'date', example: '2026-04-29' },
+                        day: { type: 'integer', example: 29 },
+                        month: { type: 'integer', example: 4 },
+                        year: { type: 'integer', example: 2026 },
+                        day_label: { type: 'string', example: '29 Apr' },
+                        total_count: { type: 'integer', example: 120 },
+                        accepted_count: { type: 'integer', example: 115 },
+                        rejected_count: { type: 'integer', example: 5 }
+                    }
+                },
+                DailyProductionData: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                        machine_id: { type: 'string', example: 'MACH-A1B2C3D4' },
+                        machine_name: { type: 'string', example: 'CNC Machine 1' },
+                        period: { type: 'string', example: 'last_31_days' },
+                        start_date: { type: 'string', format: 'date', example: '2026-03-30' },
+                        end_date: { type: 'string', format: 'date', example: '2026-04-29' },
+                        days: { type: 'array', items: { $ref: '#/components/schemas/DailyProductionDay' } }
+                    }
+                },
+                CustomProductionMonthEntry: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                        month: { type: 'string', example: '2026-04' },
+                        month_label: { type: 'string', example: 'Apr 2026' },
+                        production: { type: 'integer', example: 3200 },
+                        total_count: { type: 'integer', example: 3200 },
+                        accepted_count: { type: 'integer', example: 3150 },
+                        rejected_count: { type: 'integer', example: 50 }
+                    }
+                },
+                CustomProductionData: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                        machine_id: { type: 'string', example: 'MACH-A1B2C3D4' },
+                        machine_name: { type: 'string', example: 'CNC Machine 1' },
+                        period: { type: 'string', example: 'custom' },
+                        start_date: { type: 'string', format: 'date', example: '2026-04-01' },
+                        end_date: { type: 'string', format: 'date', example: '2026-04-21' },
+                        total_months: { type: 'integer', example: 1 },
+                        months: { type: 'array', items: { $ref: '#/components/schemas/CustomProductionMonthEntry' } }
+                    }
+                },
+                MachineVisualizationHourlyItem: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                        hour_label: { type: 'string', example: '08:00' },
+                        hour_start: { type: 'string', format: 'date-time', example: '2026-04-29T08:00:00.000Z' },
+                        hour_end: { type: 'string', format: 'date-time', example: '2026-04-29T09:00:00.000Z' },
+                        production_count: { type: 'integer', example: 12 },
+                        accepted_count: { type: 'integer', example: 10 },
+                        rejected_count: { type: 'integer', example: 2 },
+                        run_id: { type: 'integer', example: 17 }
+                    }
+                },
+                MachineVisualizationDayItem: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                        date: { type: 'string', format: 'date', example: '2026-04-29' },
+                        day: { type: 'integer', example: 29 },
+                        production_count: { type: 'integer', example: 120 },
+                        accepted_count: { type: 'integer', example: 115 },
+                        rejected_count: { type: 'integer', example: 5 }
+                    }
+                },
+                MachineVisualizationData: {
+                    type: 'object',
+                    additionalProperties: false,
+                    properties: {
+                        machine_id: { type: 'string', example: 'MACH-A1B2C3D4' },
+                        machine_name: { type: 'string', example: 'CNC Machine 1' },
+                        filter: { type: 'string', example: 'daily' },
+                        visualization: {
+                            type: 'object',
+                            additionalProperties: false,
+                            properties: {
+                                hourly: { type: 'array', items: { $ref: '#/components/schemas/MachineVisualizationHourlyItem' } },
+                                daily: { type: 'array', items: { $ref: '#/components/schemas/MachineVisualizationDayItem' } },
+                                calendar: { type: 'array', items: { $ref: '#/components/schemas/MachineVisualizationDayItem' } }
+                            }
+                        }
+                    }
+                },
+                MachineDowntimeRecord: {
+                    type: 'object',
+                    additionalProperties: true,
+                    properties: {
+                        id: { type: 'integer', example: 401 },
+                        machine_id: { type: 'string', example: 'MACH-A1B2C3D4' },
+                        reason: { type: ['string', 'null'], example: 'QC_ISSUES' },
+                        severity: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], example: 'MEDIUM' },
+                        start_time: { type: 'string', format: 'date-time', example: '2026-04-29T10:00:00.000Z' },
+                        end_time: { type: ['string', 'null'], format: 'date-time', example: '2026-04-29T10:30:00.000Z' },
+                        created_at: { type: 'string', format: 'date-time', example: '2026-04-29T10:00:01.000Z' },
+                        updated_at: { type: 'string', format: 'date-time', example: '2026-04-29T10:30:01.000Z' },
+                        status: { type: ['string', 'null'], example: 'ACTIVE' }
+                    }
+                },
+                MachineOperatorItem: {
+                    type: 'object',
+                    additionalProperties: true,
+                    properties: {
+                        id: { type: 'integer', example: 33 },
+                        machine_id: { type: 'string', example: 'MACH-A1B2C3D4' },
+                        operator_id: { type: 'integer', example: 7 },
+                        mentor_name: { type: ['string', 'null'], example: 'Ravi Kumar' },
+                        is_active: { type: 'boolean', example: true },
+                        assigned_at: { type: 'string', format: 'date-time', example: '2026-04-29T08:00:00.000Z' },
+                        operator_name: { type: 'string', example: 'Prakash S' },
+                        operator_email: { type: 'string', example: 'op@mes.com' }
+                    }
+                },
+                MachineBreakdownItem: {
+                    type: 'object',
+                    additionalProperties: true,
+                    properties: {
+                        id: { type: 'integer', example: 91 },
+                        machine_id: { type: 'string', example: 'MACH-A1B2C3D4' },
+                        operator_id: { type: 'integer', example: 7 },
+                        problem_description: { type: 'string', example: 'Vibration spike detected' },
+                        severity: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], example: 'HIGH' },
+                        breakdown_reason: { type: ['string', 'null'], example: 'QC_ISSUES' },
+                        start_time: { type: ['string', 'null'], format: 'date-time', example: '2026-04-29T09:12:00.000Z' },
+                        end_time: { type: ['string', 'null'], format: 'date-time', example: '2026-04-29T09:30:00.000Z' },
+                        comment: { type: ['string', 'null'], example: 'Awaiting tool change' },
+                        status: { type: 'string', example: 'REPORTED' },
+                        reported_at: { type: 'string', format: 'date-time', example: '2026-04-29T09:12:15.000Z' },
+                        resolved_at: { type: ['string', 'null'], format: 'date-time', example: '2026-04-29T10:00:00.000Z' },
+                        operator_name: { type: 'string', example: 'Supervisor Ravi' },
+                        machine_name: { type: 'string', example: 'CNC Machine 1' }
+                    }
+                },
+                MachineDetailsData: {
+                    type: 'object',
+                    additionalProperties: true,
+                    properties: {
+                        machine_id: { type: 'string', example: 'MACH-A1B2C3D4' },
+                        machine_name: { type: 'string', example: 'CNC Machine 1' },
+                        machine_image: { type: ['string', 'null'], example: 'iVBORw0KGgo...' },
+                        ingest_path: { type: 'string', example: '/cnc1' },
+                        status: { type: 'string', example: 'RUNNING' },
+                        work_order: {
+                            oneOf: [
+                                { type: 'null' },
+                                {
+                                    type: 'object',
+                                    additionalProperties: true,
+                                    properties: {
+                                        work_order_id: { type: 'string', example: 'WO-2026-001' },
+                                        work_order_name: { type: 'string', example: 'Frying Pan - Batch Q1' },
+                                        start_date: { type: ['string', 'null'], format: 'date-time', example: '2026-04-29T08:00:00.000Z' },
+                                        targeted_end_date: { type: ['string', 'null'], example: '2026-12-31' },
+                                        stage_order: { type: ['integer', 'null'], example: 1 },
+                                        status: { type: 'string', example: 'IN_PROGRESS' }
+                                    }
+                                }
+                            ]
+                        },
+                        production_target: { type: 'integer', example: 1000 },
+                        progress_percentage: { type: 'integer', example: 72 },
+                        last_start: { type: ['string', 'null'], format: 'date-time', example: '2026-04-29T08:00:00.000Z' },
+                        last_part_produced_at: { type: ['string', 'null'], format: 'date-time', example: '2026-04-29T08:55:00.000Z' },
+                        total_rejected_all_time: { type: 'integer', example: 10 },
+                        operators: { type: 'array', items: { $ref: '#/components/schemas/MachineOperatorItem' } },
+                        breakdowns: { type: 'array', items: { $ref: '#/components/schemas/MachineBreakdownItem' } },
+                        current_run: {
+                            oneOf: [
+                                { type: 'null' },
+                                {
+                                    type: 'object',
+                                    additionalProperties: true,
+                                    properties: {
+                                        run_id: { type: 'integer', example: 17 },
+                                        start_time: { type: ['string', 'null'], format: 'date-time', example: '2026-04-29T08:00:00.000Z' },
+                                        end_time: { type: ['string', 'null'], format: 'date-time', example: '2026-04-29T08:59:59.000Z' },
+                                        total_count: { type: 'integer', example: 120 },
+                                        accepted_count: { type: 'integer', example: 118 },
+                                        rejected_count: { type: 'integer', example: 2 },
+                                        last_activity_time: { type: ['string', 'null'], format: 'date-time', example: '2026-04-29T08:59:59.000Z' },
+                                        status: { type: 'string', example: 'RUNNING' }
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                },
+
+                // ─────────────────────────────────────────────────────────────
+                // Production / Work Order response payload schemas
+                // ─────────────────────────────────────────────────────────────
+                ProductionRecordedData: {
+                    type: 'object',
+                    additionalProperties: true,
+                    properties: {
+                        production_id: { type: 'integer', example: 123 }
+                    }
+                },
+                WorkOrderProductionSummaryData: {
+                    type: 'object',
+                    additionalProperties: true,
+                    properties: {
+                        work_order_id: { type: 'string', example: 'WO-2026-001' },
+                        work_order_name: { type: 'string', example: 'Frying Pan - Batch Q1' },
+                        target: { type: 'integer', example: 1000 },
+                        produced: { type: 'integer', example: 800 },
+                        accepted: { type: 'integer', example: 790 },
+                        rejected: { type: 'integer', example: 10 },
+                        remaining: { type: 'integer', example: 200 },
+                        completion_percentage: { type: 'number', format: 'float', example: 80.0 }
+                    }
+                },
+                WorkOrderMachineProductionMachineItem: {
+                    type: 'object',
+                    additionalProperties: true,
+                    properties: {
+                        machine_id: { type: 'string', example: 'MACH-A1B2C3D4' },
+                        machine_name: { type: 'string', example: 'CNC Machine 1' },
+                        stage_order: { type: ['integer', 'null'], example: 2 },
+                        is_last_stage: { type: 'boolean', example: true },
+                        produced_count: { type: 'integer', example: 800 },
+                        accepted_count: { type: 'integer', example: 790 },
+                        rejected_count: { type: 'integer', example: 10 }
+                    }
+                },
+                WorkOrderMachineProductionData: {
+                    type: 'object',
+                    additionalProperties: true,
+                    properties: {
+                        work_order_id: { type: 'string', example: 'WO-2026-001' },
+                        work_order_name: { type: 'string', example: 'Frying Pan - Batch Q1' },
+                        machines: {
+                            type: 'array',
+                            items: { $ref: '#/components/schemas/WorkOrderMachineProductionMachineItem' }
+                        },
+                        _note: { type: 'string', example: 'WO produced = last-stage machine only.' }
+                    }
+                },
+                WorkOrderFinalSummaryData: {
+                    type: 'object',
+                    additionalProperties: true,
+                    properties: {
+                        work_order_id: { type: 'string', example: 'WO-2026-001' },
+                        work_order_name: { type: 'string', example: 'Frying Pan - Batch Q1' },
+                        status: { type: 'string', example: 'IN_PROGRESS' },
+                        target: { type: 'integer', example: 1000 },
+                        produced: { type: 'integer', example: 800 },
+                        accepted: { type: 'integer', example: 790 },
+                        rejected: { type: 'integer', example: 10 },
+                        remaining: { type: 'integer', example: 200 },
+                        completion_percentage: { type: 'number', format: 'float', example: 80.0 },
+                        targeted_end_date: { type: ['string', 'null'], example: '2026-12-31' }
+                    }
                 }
             }
         },
@@ -46,15 +475,20 @@ const options = {
         tags: [
             { name: 'Business Auth', description: 'Business/Admin level authentication APIs' },
             { name: 'Operator Auth', description: 'Operator level authentication APIs' },
+            { name: 'Shifts', description: 'Shift management APIs' },
             { name: 'Machines', description: 'Machine management, downtime, and data ingestion' },
+            { name: 'Inventory', description: 'Inventory materials management' },
+            { name: 'Quality', description: 'Quality inspection and reporting' },
             { name: 'Machine Checklist', description: 'Machine checklists - safety, cleaning, lubrication check sheets' },
             { name: 'Work Orders', description: 'Work order CRUD, machine assignment, and production tracking' },
             { name: 'Workflows', description: 'Workflow steps management for work orders' },
             { name: 'Production', description: 'Production recording and ingestion' },
             { name: 'Operators', description: 'Operator checklist, rejections, skills, assignments, breakdowns' },
             { name: 'Dashboard', description: 'Business dashboard overview and analytics' },
+            { name: 'Scheduling', description: 'Production scheduling APIs' },
             { name: 'Notifications', description: 'Notification management' },
             { name: 'Alerts', description: 'System alerts and warnings' },
+            { name: 'Audit Logs', description: 'Audit logs for system activities' },
             { name: 'System', description: 'System and health APIs' }
         ],
         paths: {
@@ -148,7 +582,28 @@ const options = {
                     summary: 'Get machine details',
                     description: 'Returns machine info with production metrics **inside current_run only** (total_count, accepted_count, rejected_count). Top-level total_produced/accepted_count/rejected_count have been removed to avoid duplication. progress_percentage is computed from WO machine data.',
                     parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
-                    responses: { '200': { description: 'Machine details with current_run counts' }, '404': { description: 'Machine not found' } }
+                    responses: {
+                        '200': {
+                            description: 'Machine details with current_run counts',
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        required: ['success', 'data'],
+                                        properties: {
+                                            success: { type: 'boolean', example: true },
+                                            data: { $ref: '#/components/schemas/MachineDetailsData' }
+                                        },
+                                        additionalProperties: true
+                                    }
+                                }
+                            }
+                        },
+                        '404': {
+                            description: 'Machine not found',
+                            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+                        }
+                    }
                 }
             },
             '/machines/{machineId}/visualization': {
@@ -160,21 +615,48 @@ const options = {
                         { name: 'start_date', in: 'query', schema: { type: 'string', format: 'date' } },
                         { name: 'end_date', in: 'query', schema: { type: 'string', format: 'date' } }
                     ],
-                    responses: { '200': { description: 'Visualization data' } }
+                    responses: {
+                        '200': {
+                            description: 'Visualization data',
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        required: ['success', 'data'],
+                                        properties: {
+                                            success: { type: 'boolean', example: true },
+                                            data: { $ref: '#/components/schemas/MachineVisualizationData' }
+                                        },
+                                        additionalProperties: true
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             },
             '/machines/{machineId}/dashboard': {
                 get: {
                     tags: ['Machines'], summary: 'Get machine dashboard',
                     parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
-                    responses: { '200': { description: 'Machine dashboard data' } }
+                    responses: {
+                        '200': {
+                            description: 'Machine dashboard data',
+                            content: { 'application/json': { schema: { $ref: '#/components/schemas/MachineDashboard' } } }
+                        }
+                    }
                 }
             },
             '/machines/{machineId}/history': {
                 get: {
                     tags: ['Machines'], summary: 'Get machine run history',
                     parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
-                    responses: { '200': { description: 'Machine history' } }
+                    responses: {
+                        '200': {
+                            description: 'Machine history',
+                            content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/MachineHistoryItem' } } } }
+                        }
+                    }
                 }
             },
             '/machines/production-count': {
@@ -201,27 +683,86 @@ const options = {
                 get: {
                     tags: ['Machines'], summary: 'Get downtime analysis',
                     parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
-                    responses: { '200': { description: 'Downtime analysis' } }
+                    responses: {
+                        '200': {
+                            description: 'Downtime analysis',
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        required: ['success', 'data'],
+                                        properties: {
+                                            success: { type: 'boolean', example: true },
+                                            data: { $ref: '#/components/schemas/DowntimeAnalysisData' }
+                                        },
+                                        additionalProperties: true
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             },
             '/machines/{machineId}/downtime': {
                 get: {
                     tags: ['Machines'], summary: 'Get downtime history',
                     parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
-                    responses: { '200': { description: 'Downtime records' } }
+                    responses: {
+                        '200': {
+                            description: 'Downtime records',
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        required: ['success', 'data'],
+                                        properties: {
+                                            success: { type: 'boolean', example: true },
+                                            data: {
+                                                type: 'array',
+                                                items: { $ref: '#/components/schemas/MachineDowntimeRecord' }
+                                            }
+                                        },
+                                        additionalProperties: true
+                                    }
+                                }
+                            }
+                        }
+                    }
                 },
                 post: {
                     tags: ['Machines'], summary: 'Record machine downtime',
                     parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
                     requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['start_time'], properties: { reason: { type: 'string' }, severity: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] }, start_time: { type: 'string', format: 'date-time' }, end_time: { type: 'string', format: 'date-time' } } } } } },
-                    responses: { '201': { description: 'Downtime recorded' } }
+                    responses: {
+                        '201': {
+                            description: 'Downtime recorded',
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        required: ['success', 'data'],
+                                        properties: {
+                                            success: { type: 'boolean', example: true },
+                                            data: { $ref: '#/components/schemas/MachineDowntimeRecord' }
+                                        },
+                                        additionalProperties: true
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             },
             '/machines/{machineId}/stop': {
                 post: {
                     tags: ['Machines'], summary: 'Stop a running machine',
                     parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
-                    responses: { '200': { description: 'Machine stopped' } }
+                    responses: {
+                        '200': {
+                            description: 'Machine stopped',
+                            content: { 'application/json': { schema: { $ref: '#/components/schemas/MachineStopResponse' } } }
+                        }
+                    }
                 }
             },
 
@@ -233,8 +774,26 @@ const options = {
                     description: 'Returns exactly 24 hourly slots (one per hour) for the last 24 hours. Each slot has total_count, accepted_count, rejected_count. Empty hours return 0s.',
                     parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' }, description: 'Machine ID' }],
                     responses: {
-                        '200': { description: 'Hourly slots array. period=last_24_hours. slots[].hour_label, hour_start, hour_end, total_count, accepted_count, rejected_count.' },
-                        '404': { description: 'Machine not found' }
+                        '200': {
+                            description: 'Hourly slots array. period=last_24_hours. slots[].hour_label, hour_start, hour_end, total_count, accepted_count, rejected_count.',
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        required: ['success', 'data'],
+                                        properties: {
+                                            success: { type: 'boolean', example: true },
+                                            data: { $ref: '#/components/schemas/HourlyProductionData' }
+                                        },
+                                        additionalProperties: true
+                                    }
+                                }
+                            }
+                        },
+                        '404': {
+                            description: 'Machine not found',
+                            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+                        }
                     }
                 }
             },
@@ -245,8 +804,26 @@ const options = {
                     description: 'Returns exactly 31 day slots. Each day slot has date, day, month, year, day_label, total_count, accepted_count, rejected_count. Days with no production return 0s.',
                     parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
                     responses: {
-                        '200': { description: '31-day array. period=last_31_days. days[].date, day_label, total_count, accepted_count, rejected_count.' },
-                        '404': { description: 'Machine not found' }
+                        '200': {
+                            description: '31-day array. period=last_31_days. days[].date, day_label, total_count, accepted_count, rejected_count.',
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        required: ['success', 'data'],
+                                        properties: {
+                                            success: { type: 'boolean', example: true },
+                                            data: { $ref: '#/components/schemas/DailyProductionData' }
+                                        },
+                                        additionalProperties: true
+                                    }
+                                }
+                            }
+                        },
+                        '404': {
+                            description: 'Machine not found',
+                            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+                        }
                     }
                 }
             },
@@ -261,9 +838,30 @@ const options = {
                         { name: 'end_date', in: 'query', required: true, schema: { type: 'string', format: 'date', example: '2026-04-21' }, description: 'End date (YYYY-MM-DD)' }
                     ],
                     responses: {
-                        '200': { description: 'Month-wise array for range. period=custom. months[].month, month_label, production, accepted_count, rejected_count. total_months shows count of months in range.' },
-                        '400': { description: 'start_date and end_date are required, start_date must not be after end_date' },
-                        '404': { description: 'Machine not found' }
+                        '200': {
+                            description: 'Month-wise array for range. period=custom. months[].month, month_label, production, accepted_count, rejected_count. total_months shows count of months in range.',
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        required: ['success', 'data'],
+                                        properties: {
+                                            success: { type: 'boolean', example: true },
+                                            data: { $ref: '#/components/schemas/CustomProductionData' }
+                                        },
+                                        additionalProperties: true
+                                    }
+                                }
+                            }
+                        },
+                        '400': {
+                            description: 'start_date and end_date are required, start_date must not be after end_date',
+                            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+                        },
+                        '404': {
+                            description: 'Machine not found',
+                            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+                        }
                     }
                 }
             },
@@ -271,7 +869,16 @@ const options = {
                 post: {
                     tags: ['Machines'], summary: 'Ingest machine data (sensor/counter)',
                     parameters: [{ name: 'pathId', in: 'path', required: true, schema: { type: 'string' }, description: 'Machine ingest path ID' }],
-                    responses: { '200': { description: 'Data received' }, '404': { description: 'Machine not found' } }
+                    responses: {
+                        '200': {
+                            description: 'Data received',
+                            content: { 'application/json': { schema: { $ref: '#/components/schemas/MachineIngestResponse' } } }
+                        },
+                        '404': {
+                            description: 'Machine not found',
+                            content: { 'application/json': { schema: { type: 'object', required: ['message'], properties: { message: { type: 'string', example: 'Machine not found for path: /cnc1' } }, additionalProperties: true } } }
+                        }
+                    }
                 }
             },
 
@@ -282,7 +889,7 @@ const options = {
                 get: { tags: ['Machine Checklist'], summary: 'Get all checklists grouped by machine', responses: { '200': { description: 'All checklists' } } }
             },
             '/checklist/summary': {
-                get: { tags: ['Machine Checklist'], summary: 'Get checklist summary (completion stats per machine)', responses: { '200': { description: 'Summary data with checklist_status = COMPLETED or NOT_COMPLETED per machine' } } }
+                get: { tags: ['Machine Checklist'], summary: 'Get checklist summary (completion stats per machine)', responses: { '200': { description: 'Summary data with checklist_status = NOT_STARTED, PENDING, or COMPLETED per machine' } } }
             },
             '/checklist/generic': {
                 get: {
@@ -336,7 +943,7 @@ const options = {
                 get: {
                     tags: ['Machine Checklist'], summary: 'Get checklist for a specific machine',
                     parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
-                    responses: { '200': { description: 'Machine checklist with items ordered by sort_order, including checklist_loaded_at, last_saved_on, and checklist_status (COMPLETED/NOT_COMPLETED)' }, '404': { description: 'Machine not found' } }
+                    responses: { '200': { description: 'Machine checklist with items ordered by sort_order, including checklist_loaded_at, last_saved_on, and checklist_status (NOT_STARTED/PENDING/COMPLETED)' }, '404': { description: 'Machine not found' } }
                 },
                 post: {
                     tags: ['Machine Checklist'], summary: 'Create a new checklist item for a machine (disabled)',
@@ -553,8 +1160,26 @@ const options = {
                     description: '**Business rules applied:** `produced` = last-stage machine\'s production_count (parts that completed the full pipeline). `rejected` = SUM of ALL machines\' rejected_count. `accepted` = produced - rejected.',
                     parameters: [{ name: 'workOrderId', in: 'path', required: true, schema: { type: 'string', example: 'WO-2026-001' } }],
                     responses: {
-                        '200': { description: 'work_order_id, work_order_name, target, produced, accepted, rejected, remaining, completion_percentage' },
-                        '404': { description: 'Work order not found' }
+                        '200': {
+                            description: 'work_order_id, work_order_name, target, produced, accepted, rejected, remaining, completion_percentage',
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        required: ['success', 'data'],
+                                        properties: {
+                                            success: { type: 'boolean', example: true },
+                                            data: { $ref: '#/components/schemas/WorkOrderProductionSummaryData' }
+                                        },
+                                        additionalProperties: true
+                                    }
+                                }
+                            }
+                        },
+                        '404': {
+                            description: 'Work order not found',
+                            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+                        }
                     }
                 }
             },
@@ -565,8 +1190,26 @@ const options = {
                     description: 'Returns each machine with its own produced_count, rejected_count, accepted_count. is_last_stage=true marks the final pipeline machine whose produced_count equals the WO produced count.',
                     parameters: [{ name: 'workOrderId', in: 'path', required: true, schema: { type: 'string' } }],
                     responses: {
-                        '200': { description: 'machines[]: machine_id, machine_name, stage_order, is_last_stage, produced_count, accepted_count, rejected_count' },
-                        '404': { description: 'Work order not found' }
+                        '200': {
+                            description: 'machines[]: machine_id, machine_name, stage_order, is_last_stage, produced_count, accepted_count, rejected_count',
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        required: ['success', 'data'],
+                                        properties: {
+                                            success: { type: 'boolean', example: true },
+                                            data: { $ref: '#/components/schemas/WorkOrderMachineProductionData' }
+                                        },
+                                        additionalProperties: true
+                                    }
+                                }
+                            }
+                        },
+                        '404': {
+                            description: 'Work order not found',
+                            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+                        }
                     }
                 }
             },
@@ -580,8 +1223,31 @@ const options = {
                         { name: 'group_by', in: 'query', schema: { type: 'string', enum: ['machine'], description: 'Pass machine to get per-machine breakdown' } }
                     ],
                     responses: {
-                        '200': { description: 'Final WO summary or machine-grouped data' },
-                        '404': { description: 'Work order not found' }
+                        '200': {
+                            description: 'Final WO summary or machine-grouped data',
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        required: ['success', 'data'],
+                                        properties: {
+                                            success: { type: 'boolean', example: true },
+                                            data: {
+                                                oneOf: [
+                                                    { $ref: '#/components/schemas/WorkOrderFinalSummaryData' },
+                                                    { $ref: '#/components/schemas/WorkOrderMachineProductionData' }
+                                                ]
+                                            }
+                                        },
+                                        additionalProperties: true
+                                    }
+                                }
+                            }
+                        },
+                        '404': {
+                            description: 'Work order not found',
+                            content: { 'application/json': { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+                        }
                     }
                 }
             },
@@ -641,14 +1307,50 @@ const options = {
                 post: {
                     tags: ['Production'], summary: 'Record production data',
                     requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['machine_id'], properties: { machine_id: { type: 'string' }, work_order_id: { type: 'string' }, produced_count: { type: 'integer' }, rejected_count: { type: 'integer' }, timestamp: { type: 'string', format: 'date-time' } } } } } },
-                    responses: { '201': { description: 'Production recorded' } }
+                    responses: {
+                        '201': {
+                            description: 'Production recorded',
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        required: ['success', 'data'],
+                                        properties: {
+                                            success: { type: 'boolean', example: true },
+                                            message: { type: 'string', example: 'Production recorded' },
+                                            data: { $ref: '#/components/schemas/ProductionRecordedData' }
+                                        },
+                                        additionalProperties: true
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             },
             '/production/ingest': {
                 post: {
                     tags: ['Production'], summary: 'Ingest production data',
                     requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['machine_id'], properties: { machine_id: { type: 'string' }, work_order_id: { type: 'string' }, produced_count: { type: 'integer' }, rejected_count: { type: 'integer' } } } } } },
-                    responses: { '200': { description: 'Production ingested' } }
+                    responses: {
+                        '200': {
+                            description: 'Production ingested',
+                            content: {
+                                'application/json': {
+                                    schema: {
+                                        type: 'object',
+                                        required: ['success', 'data'],
+                                        properties: {
+                                            success: { type: 'boolean', example: true },
+                                            message: { type: 'string', example: 'Production ingested' },
+                                            data: { $ref: '#/components/schemas/ProductionRecordedData' }
+                                        },
+                                        additionalProperties: true
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             },
 
@@ -854,6 +1556,223 @@ const options = {
             // ═══════════════════════════════════════════════
             '/alerts': {
                 get: { tags: ['Alerts'], summary: 'Get system alerts (active breakdowns, low stock, etc.)', responses: { '200': { description: 'System alerts' } } }
+            },
+
+            // ═══════════════════════════════════════════════
+            // SHIFTS
+            // ═══════════════════════════════════════════════
+            '/shifts': {
+                post: {
+                    tags: ['Shifts'],
+                    summary: 'Create shift',
+                    requestBody: {
+                        required: true,
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    required: ['shift_name', 'start_time', 'end_time'],
+                                    properties: {
+                                        shift_name: { type: 'string', example: 'Morning Shift' },
+                                        start_time: { type: 'string', format: 'date-time', example: '2026-04-29T08:00:00.000Z' },
+                                        end_time: { type: 'string', format: 'date-time', example: '2026-04-29T16:00:00.000Z' }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    responses: { '201': { description: 'Shift created' }, '400': { description: 'Validation error' } }
+                },
+                get: { tags: ['Shifts'], summary: 'Get all shifts', responses: { '200': { description: 'List of shifts' } } }
+            },
+            '/shifts/current': {
+                get: { tags: ['Shifts'], summary: 'Get current active shift', responses: { '200': { description: 'Current shift (or message if none active)' } } }
+            },
+            '/shifts/assign': {
+                post: {
+                    tags: ['Shifts'],
+                    summary: 'Assign operator to shift',
+                    requestBody: {
+                        required: true,
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    required: ['operator_id', 'shift_id', 'date'],
+                                    properties: {
+                                        operator_id: { type: 'integer', example: 12 },
+                                        shift_id: { type: 'integer', example: 3 },
+                                        date: { type: 'string', format: 'date', example: '2026-04-29' }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    responses: { '201': { description: 'Operator assigned to shift' }, '400': { description: 'Validation error' } }
+                }
+            },
+            '/shifts/{shiftId}/performance': {
+                get: {
+                    tags: ['Shifts'],
+                    summary: 'Get shift performance',
+                    parameters: [{ name: 'shiftId', in: 'path', required: true, schema: { type: 'integer' } }],
+                    responses: { '200': { description: 'Shift performance data' } }
+                }
+            },
+
+            // ═══════════════════════════════════════════════
+            // INVENTORY
+            // ═══════════════════════════════════════════════
+            '/inventory/materials': {
+                post: {
+                    tags: ['Inventory'],
+                    summary: 'Add material',
+                    requestBody: {
+                        required: true,
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    required: ['material_name'],
+                                    properties: {
+                                        material_name: { type: 'string', example: 'Cooking Oil' },
+                                        quantity: { type: 'number', example: 1500 },
+                                        unit: { type: 'string', example: 'ml' }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    responses: { '201': { description: 'Material created' }, '400': { description: 'Validation error' } }
+                },
+                get: { tags: ['Inventory'], summary: 'Get all materials', responses: { '200': { description: 'Materials list' } } }
+            },
+            '/inventory/consume': {
+                post: {
+                    tags: ['Inventory'],
+                    summary: 'Consume material',
+                    requestBody: {
+                        required: true,
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    required: ['material_id', 'quantity_used'],
+                                    properties: {
+                                        material_id: { type: 'integer', example: 1 },
+                                        work_order_id: { type: 'string', example: 'WO-2026-001' },
+                                        quantity_used: { type: 'number', example: 120 }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    responses: {
+                        '200': { description: 'Material consumed' },
+                        '400': { description: 'Validation error / insufficient stock' },
+                        '404': { description: 'Material not found' }
+                    }
+                }
+            },
+
+            // ═══════════════════════════════════════════════
+            // QUALITY
+            // ═══════════════════════════════════════════════
+            '/quality/inspection': {
+                post: {
+                    tags: ['Quality'],
+                    summary: 'Record inspection',
+                    requestBody: {
+                        required: true,
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    required: ['machine_id'],
+                                    properties: {
+                                        machine_id: { type: 'string', example: 'MACH-A1B2C3D4' },
+                                        work_order_id: { type: 'string', example: 'WO-2026-001' },
+                                        parameters: { type: 'object', additionalProperties: true, example: { thickness_mm: 2.1, color: 'golden' } },
+                                        status: { type: 'string', example: 'PASS' },
+                                        remarks: { type: 'string', example: 'Minor scratch on edge' }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    responses: { '201': { description: 'Inspection recorded' }, '400': { description: 'Validation error' } }
+                }
+            },
+            '/quality/reports': {
+                get: {
+                    tags: ['Quality'],
+                    summary: 'Get quality reports',
+                    parameters: [
+                        { name: 'work_order_id', in: 'query', schema: { type: 'string' }, required: false },
+                        { name: 'machine_id', in: 'query', schema: { type: 'string' }, required: false }
+                    ],
+                    responses: { '200': { description: 'Quality reports data' } }
+                }
+            },
+
+            // ═══════════════════════════════════════════════
+            // SCHEDULING
+            // ═══════════════════════════════════════════════
+            '/scheduling/plan': {
+                post: {
+                    tags: ['Scheduling'],
+                    summary: 'Create production plan',
+                    requestBody: {
+                        required: true,
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    required: ['work_order_id', 'machine_id', 'start_time', 'end_time'],
+                                    properties: {
+                                        work_order_id: { type: 'string', example: 'WO-2026-001' },
+                                        machine_id: { type: 'string', example: 'MACH-A1B2C3D4' },
+                                        start_time: { type: 'string', format: 'date-time', example: '2026-04-29T08:00:00.000Z' },
+                                        end_time: { type: 'string', format: 'date-time', example: '2026-04-29T16:00:00.000Z' }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    responses: {
+                        '201': { description: 'Plan created' },
+                        '400': { description: 'Validation error' },
+                        '404': { description: 'Work order or machine not found' }
+                    }
+                }
+            },
+            '/scheduling': {
+                get: { tags: ['Scheduling'], summary: 'Get full schedule', responses: { '200': { description: 'Schedule list' } } }
+            },
+            '/scheduling/machine/{machineId}': {
+                get: {
+                    tags: ['Scheduling'],
+                    summary: 'Get machine schedule',
+                    parameters: [{ name: 'machineId', in: 'path', required: true, schema: { type: 'string' } }],
+                    responses: { '200': { description: 'Machine schedule data' } }
+                }
+            },
+
+            // ═══════════════════════════════════════════════
+            // AUDIT LOGS
+            // ═══════════════════════════════════════════════
+            '/audit-logs': {
+                get: {
+                    tags: ['Audit Logs'],
+                    summary: 'Get audit logs',
+                    parameters: [
+                        { name: 'limit', in: 'query', schema: { type: 'integer' }, required: false, example: 100 },
+                        { name: 'offset', in: 'query', schema: { type: 'integer' }, required: false, example: 0 },
+                        { name: 'entity_type', in: 'query', schema: { type: 'string' }, required: false, example: 'work_orders' },
+                        { name: 'entity_id', in: 'query', schema: { type: 'string' }, required: false, example: '1' }
+                    ],
+                    responses: { '200': { description: 'Audit logs list' } }
+                }
             }
         }
     },
@@ -861,4 +1780,56 @@ const options = {
 };
 
 const swaggerSpec = swaggerJsdoc(options);
+
+// --- Ensure every response has a response-body schema ---
+// Many endpoints in this repo only define `responses.*.description` today.
+// The code below injects a consistent OpenAPI `responses.*.content` schema
+// so Swagger UI can show the response JSON structure for both success and error.
+const SUCCESS_SCHEMA_REF = { $ref: '#/components/schemas/SuccessResponse' };
+const ERROR_SCHEMA_REF = { $ref: '#/components/schemas/ErrorResponse' };
+
+const ensureResponseSchemas = (spec) => {
+    if (!spec || !spec.paths || typeof spec.paths !== 'object') return spec;
+
+    const httpMethods = new Set(['get', 'post', 'put', 'patch', 'delete', 'options', 'head']);
+
+    const setJsonContentSchema = (responseObj, schemaRef) => {
+        if (!responseObj || typeof responseObj !== 'object') return;
+        responseObj.content = responseObj.content || {};
+        const existing = responseObj.content['application/json'] || {};
+        // Don't override a schema that was explicitly authored in the swagger paths.
+        // This is important for endpoint-specific `data` schemas.
+        if (existing && existing.schema) return;
+
+        responseObj.content['application/json'] = { ...existing, schema: schemaRef };
+    };
+
+    for (const path of Object.keys(spec.paths)) {
+        const pathItem = spec.paths[path];
+        if (!pathItem || typeof pathItem !== 'object') continue;
+
+        for (const method of Object.keys(pathItem)) {
+            if (!httpMethods.has(method)) continue;
+            const operation = pathItem[method];
+            if (!operation || typeof operation !== 'object') continue;
+            if (!operation.responses || typeof operation.responses !== 'object') continue;
+
+            for (const [statusCode, responseObj] of Object.entries(operation.responses)) {
+                if (!responseObj || typeof responseObj !== 'object') continue;
+
+                const statusNum = parseInt(String(statusCode), 10);
+                if (!Number.isNaN(statusNum) && statusNum >= 400 && statusNum < 600) {
+                    setJsonContentSchema(responseObj, ERROR_SCHEMA_REF);
+                } else {
+                    // Treat 2xx and unknown/default as success envelope.
+                    setJsonContentSchema(responseObj, SUCCESS_SCHEMA_REF);
+                }
+            }
+        }
+    }
+
+    return spec;
+};
+
+ensureResponseSchemas(swaggerSpec);
 module.exports = swaggerSpec;

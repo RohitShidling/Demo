@@ -141,7 +141,10 @@ class MachineChecklistModel {
                 m.machine_name,
                 COUNT(mc.id) AS total_items,
                 SUM(CASE WHEN mc.status IS NOT NULL AND mc.status <> 'PENDING' THEN 1 ELSE 0 END) AS completed_items,
-                SUM(CASE WHEN mc.status IN ('PENDING') THEN 1 ELSE 0 END) AS pending_items,
+                SUM(CASE WHEN mc.status IS NULL OR mc.status = 'PENDING' THEN 1 ELSE 0 END) AS pending_items,
+                SUM(CASE WHEN 
+                    (mc.status IS NOT NULL AND mc.status <> 'PENDING')
+                THEN 1 ELSE 0 END) AS total_touched,
                 SUM(CASE WHEN mc.status IN ('NOT_OK', 'NOT_DONE') THEN 1 ELSE 0 END) AS not_ok_items,
                 MAX(mc.updated_at) AS last_updated,
                 MIN(mc.created_at) AS created_at

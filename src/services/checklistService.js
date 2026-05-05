@@ -87,7 +87,10 @@ class ChecklistService {
 
     normalizeStatus(status) {
         if (status === undefined || status === null || status === '') return 'PENDING';
+        if (typeof status === 'boolean') return status ? 'DONE' : 'PENDING';
         const normalized = String(status).trim().toUpperCase();
+        if (normalized === 'COMPLETED') return 'DONE';
+        if (normalized === 'NOT_COMPLETED' || normalized === 'NOT_STARTED' || normalized === 'UNCHECKED') return 'PENDING';
         if (!CHECKLIST_ALLOWED_STATUSES.includes(normalized)) {
             const e = new Error(`Invalid status. Allowed statuses: ${CHECKLIST_ALLOWED_STATUSES.join(', ')}`);
             e.statusCode = 400;
@@ -96,18 +99,26 @@ class ChecklistService {
         return normalized;
     }
 
-    isChecklistItemFilled(status) {
-        return String(status || '').toUpperCase() !== 'PENDING';
+    isChecklistItemFilled(item) {
+        if (!item) return false;
+        const status = String(item.status || '').toUpperCase();
+        // Completion is derived from checkbox/status only.
+        // Any non-PENDING status means this checklist line is checked/completed.
+        return status !== 'PENDING' && status !== '';
     }
 
     getCompletedCount(checklistItems) {
-        return checklistItems.filter(i => this.isChecklistItemFilled(i.status)).length;
+        return checklistItems.filter(i => this.isChecklistItemFilled(i)).length;
     }
 
     getChecklistStatus(checklistItems) {
-        if (!checklistItems.length) return 'NOT_COMPLETED';
+        if (!checklistItems || !checklistItems.length) return 'NOT_STARTED';
+        const total = checklistItems.length;
         const completed = this.getCompletedCount(checklistItems);
-        return completed === checklistItems.length ? 'COMPLETED' : 'NOT_COMPLETED';
+
+        if (completed === 0) return 'NOT_STARTED';
+        if (completed === total) return 'COMPLETED';
+        return 'PENDING';
     }
 
     // Get checklist by machine ID (ordered)
@@ -119,14 +130,15 @@ class ChecklistService {
         const lastSavedOn = await MachineChecklistModel.getLastSavedOn(machine_id);
         const checklistLoadedAt = new Date().toISOString();
 
+        const completedCount = this.getCompletedCount(checklist);
         return {
             machine_id: machine.machine_id,
             machine_name: machine.machine_name,
             checklist_loaded_at: checklistLoadedAt,
             last_saved_on: lastSavedOn,
             total_items: checklist.length,
-            completed_items: this.getCompletedCount(checklist),
-            pending_items: checklist.filter(i => i.status === 'PENDING').length,
+            completed_items: completedCount,
+            pending_items: checklist.length - completedCount,
             checklist_status: this.getChecklistStatus(checklist),
             checklist_items: checklist
         };
@@ -164,12 +176,26 @@ class ChecklistService {
 
             if (!target) continue;
 
-            const updates = {
-                checked_by
-            };
+            const updates = {};
+            // Use top-level names if provided, otherwise keep existing
             if (operator_name !== undefined) updates.operator_name = operator_name;
             if (cell_incharge_name !== undefined) updates.cell_incharge_name = cell_incharge_name;
-            if (entry.status !== undefined) updates.status = this.normalizeStatus(entry.status);
+
+            // Allow individual item overrides for names if present in item entry
+            if (entry.operator_name !== undefined) updates.operator_name = entry.operator_name;
+            if (entry.cell_incharge_name !== undefined) updates.cell_incharge_name = entry.cell_incharge_name;
+
+            updates.checked_by = checked_by;
+
+            // Accept either explicit status or checkbox-style "checked" boolean from frontend.
+            if (entry.status !== undefined) {
+                updates.status = this.normalizeStatus(entry.status);
+            } else if (entry.checked !== undefined) {
+                updates.status = this.normalizeStatus(Boolean(entry.checked));
+            } else {
+                updates.status = target.status || 'PENDING';
+            }
+
             if (entry.comments !== undefined) updates.comments = entry.comments;
 
             await MachineChecklistModel.update(target.id, updates);
@@ -205,11 +231,13 @@ class ChecklistService {
         }
         const grouped = Object.values(machineMap);
         for (const machineChecklist of grouped) {
-            machineChecklist.total_items = machineChecklist.checklist_items.length;
-            machineChecklist.completed_items = this.getCompletedCount(machineChecklist.checklist_items);
-            machineChecklist.pending_items = machineChecklist.checklist_items.filter(i => i.status === 'PENDING').length;
+            const total = machineChecklist.checklist_items.length;
+            const completed = this.getCompletedCount(machineChecklist.checklist_items);
+            machineChecklist.total_items = total;
+            machineChecklist.completed_items = completed;
+            machineChecklist.pending_items = total - completed;
             machineChecklist.checklist_status = this.getChecklistStatus(machineChecklist.checklist_items);
-            machineChecklist.last_saved_on = machineChecklist.checklist_items.length
+            machineChecklist.last_saved_on = total
                 ? machineChecklist.checklist_items.reduce((acc, item) => {
                     const t = item.updated_at ? new Date(item.updated_at).getTime() : 0;
                     return t > acc ? t : acc;
@@ -228,9 +256,15 @@ class ChecklistService {
         return rows.map((row) => {
             const total = Number(row.total_items || 0);
             const completed = Number(row.completed_items || 0);
+            let status = 'NOT_STARTED';
+            if (total > 0) {
+                if (completed === total) status = 'COMPLETED';
+                else if (completed === 0 && Number(row.total_touched || 0) === 0) status = 'NOT_STARTED';
+                else status = 'PENDING';
+            }
             return {
                 ...row,
-                checklist_status: total > 0 && completed === total ? 'COMPLETED' : 'NOT_COMPLETED'
+                checklist_status: status
             };
         });
     }

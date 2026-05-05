@@ -4,6 +4,7 @@ const PartRejectionModel = require('../models/PartRejection');
 const MachineRunModel = require('../models/MachineRun');
 const MachineModel = require('../models/Machine');
 const MachineChecklistModel = require('../models/MachineChecklist');
+const ChecklistService = require('./checklistService');
 const logger = require('../utils/logger');
 
 class WorkOrderService {
@@ -330,16 +331,10 @@ class WorkOrderService {
         const overview = await Promise.all(machines.map(async (m) => {
             const pool = require('../config/database').getPool();
             const [items] = await pool.execute(
-                `SELECT status FROM machine_checklists WHERE machine_id = ?`,
+                `SELECT status, operator_name, cell_incharge_name FROM machine_checklists WHERE machine_id = ?`,
                 [m.machine_id]
             );
-            let checklistStatus = 'NOT_STARTED';
-            const completedItems = items.filter(i => String(i.status || '').toUpperCase() !== 'PENDING').length;
-            if (items.length > 0) {
-                if (completedItems === 0) checklistStatus = 'NOT_STARTED';
-                else if (completedItems === items.length) checklistStatus = 'COMPLETED';
-                else checklistStatus = 'PENDING';
-            }
+            const checklistStatus = ChecklistService.getChecklistStatus(items);
             return {
                 machine_id: m.machine_id,
                 machine_name: m.machine_name,
