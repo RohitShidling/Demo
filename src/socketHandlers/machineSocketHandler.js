@@ -3,6 +3,7 @@ const OperatorService = require('../services/operatorService');
 const AlertService = require('../services/alertService');
 const WorkOrderService = require('../services/workOrderService');
 const WorkflowService = require('../services/workflowService');
+const ChecklistService = require('../services/checklistService');
 const NotificationModel = require('../models/Notification');
 const { authenticateSocket } = require('../middleware/auth');
 const logger = require('../utils/logger');
@@ -148,6 +149,17 @@ module.exports = (io) => {
                 const result = await OperatorService.updateMachineStatus(machine_id, status);
                 if (typeof cb === 'function') cb({ success: true, data: result });
                 ns.emit('machine:status_changed', { machine_id, status, changed_by: socket.user.username, timestamp: new Date().toISOString() });
+            } catch (e) { emitError(socket, cb, e); }
+        });
+
+        // ── OPERATOR: Update Checklist ──
+        socket.on('operator:updateChecklist', async (data, cb) => {
+            try {
+                const { machine_id, operator_name, cell_incharge_name, items } = data || {};
+                if (!machine_id || !items) return emitError(socket, cb, { message: 'machine_id and items required' });
+                const result = await ChecklistService.saveMachineChecklistProgress(machine_id, { operator_name, cell_incharge_name, items }, socket.user.id);
+                if (typeof cb === 'function') cb({ success: true, data: result });
+                ns.emit('checklist:updated', { machine_id, data: result, updated_by: socket.user.username, timestamp: new Date().toISOString() });
             } catch (e) { emitError(socket, cb, e); }
         });
 

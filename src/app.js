@@ -12,6 +12,9 @@ const logger = require('./utils/logger');
 
 const app = express();
 
+// Disable HTTP ETag generation (prevents clients/proxies from using conditional requests)
+app.set('etag', false);
+
 // Security Middleware
 app.use(helmet());
 
@@ -35,7 +38,7 @@ if (config.nodeEnv === 'development') {
 }
 
 // Static File Serving
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads'), { etag: false }));
 
 // Swagger API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {

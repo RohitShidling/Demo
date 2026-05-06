@@ -2,6 +2,11 @@ const ChecklistService = require('../services/checklistService');
 const multer = require('multer');
 const config = require('../config/env');
 
+const getIO = (req) => {
+    const io = req.app.get('io');
+    return io ? io.of('/machines') : null;
+};
+
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.upload.maxFileSize } });
 
 // GET /api/checklist - Get all checklists (grouped by machine)
@@ -53,6 +58,9 @@ exports.saveChecklistProgress = async (req, res, next) => {
             req.user?.id
         );
         res.json({ success: true, data });
+
+        const ns = getIO(req);
+        if (ns) ns.emit('checklist:updated', { machine_id: req.params.machineId, data, updated_by: req.user?.username, timestamp: new Date().toISOString() });
     } catch (error) { next(error); }
 };
 
