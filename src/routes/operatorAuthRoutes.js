@@ -4,7 +4,9 @@ const OperatorAuthController = require('../controllers/OperatorAuthController');
 const { authenticate, authorizeUserType } = require('../middleware/auth');
 
 // Public
+router.post('/register/request-otp', OperatorAuthController.requestRegisterOtp);
 router.post('/register', OperatorAuthController.register);
+router.post('/login/request-otp', OperatorAuthController.requestLoginOtp);
 router.post('/login', OperatorAuthController.login);
 router.post('/refresh', OperatorAuthController.refreshToken);
 

@@ -1,10 +1,22 @@
-const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const BusinessUserModel = require('../models/BusinessUser');
+const AuthOtpModel = require('../models/AuthOtp');
 const config = require('../config/env');
 const logger = require('../utils/logger');
+const { sendOtpEmail } = require('../utils/mailer');
 
 class BusinessAuthService {
+    buildUsernameFromName(name, email) {
+        const source = (name || email?.split('@')[0] || 'business_user')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '')
+            .slice(0, 24);
+        const suffix = Math.random().toString(36).slice(2, 8);
+        return `${source || 'business_user'}_${suffix}`;
+    }
+
     generateAccessToken(user) {
         return jwt.sign(
             {
@@ -27,14 +39,7 @@ class BusinessAuthService {
         );
     }
 
-    async register({ username, email, password }) {
-        const existingUsername = await BusinessUserModel.findByUsername(username);
-        if (existingUsername) {
-            const error = new Error('Username already exists');
-            error.statusCode = 409;
-            throw error;
-        }
-
+    async requestRegisterOtp({ name, email }) {
         const existingEmail = await BusinessUserModel.findByEmail(email);
         if (existingEmail) {
             const error = new Error('Email already exists');
@@ -42,25 +47,62 @@ class BusinessAuthService {
             throw error;
         }
 
-        const salt = await bcrypt.genSalt(12);
-        const hashedPassword = await bcrypt.hash(password, salt);
+        const { otp, expiresAt } = await AuthOtpModel.create({ email, user_type: 'business', purpose: 'register' });
+        await sendOtpEmail({ to: email, otp, purpose: 'register' });
+        return { message: 'OTP sent to email for registration', expiresAt };
+    }
 
+    async verifyOtp({ email, otp, purpose, userType }) {
+        const record = await AuthOtpModel.findLatestValid({ email, user_type: userType, purpose });
+        if (!record) {
+            const error = new Error('No OTP request found. Please request OTP first.');
+            error.statusCode = 400;
+            throw error;
+        }
+
+        if (new Date(record.expires_at).getTime() < Date.now()) {
+            const error = new Error('OTP expired. Please request a new OTP.');
+            error.statusCode = 401;
+            throw error;
+        }
+
+        if (record.attempts >= config.otp.maxAttempts) {
+            const error = new Error('Too many OTP attempts. Please request a new OTP.');
+            error.statusCode = 429;
+            throw error;
+        }
+
+        const otpHash = AuthOtpModel.hashOtp(otp);
+        if (otpHash !== record.otp_hash) {
+            await AuthOtpModel.incrementAttempts(record.id);
+            const error = new Error('Invalid OTP');
+            error.statusCode = 401;
+            throw error;
+        }
+
+        await AuthOtpModel.markVerified(record.id);
+    }
+
+    async register({ name, email, otp }) {
+        await this.verifyOtp({ email, otp, purpose: 'register', userType: 'business' });
+        const username = this.buildUsernameFromName(name, email);
+        const randomPassword = crypto.randomUUID();
         const userId = await BusinessUserModel.create({
             username,
             email,
-            password: hashedPassword
+            password: randomPassword
         });
 
         const user = await BusinessUserModel.findById(userId);
-        logger.info(`Business user registered: ${username} (admin)`);
+        logger.info(`Business user registered: ${email} (admin)`);
 
         return { user, message: 'Business user registered successfully' };
     }
 
-    async login({ email, password }) {
+    async requestLoginOtp({ email }) {
         const user = await BusinessUserModel.findByEmail(email);
         if (!user) {
-            const error = new Error('Invalid email or password');
+            const error = new Error('User with this email does not exist');
             error.statusCode = 401;
             throw error;
         }
@@ -71,9 +113,16 @@ class BusinessAuthService {
             throw error;
         }
 
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            const error = new Error('Invalid email or password');
+        const { otp, expiresAt } = await AuthOtpModel.create({ email, user_type: 'business', purpose: 'login' });
+        await sendOtpEmail({ to: email, otp, purpose: 'login' });
+        return { message: 'OTP sent to email for login', expiresAt };
+    }
+
+    async login({ email, otp }) {
+        await this.verifyOtp({ email, otp, purpose: 'login', userType: 'business' });
+        const user = await BusinessUserModel.findByEmail(email);
+        if (!user) {
+            const error = new Error('User with this email does not exist');
             error.statusCode = 401;
             throw error;
         }

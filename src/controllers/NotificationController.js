@@ -1,4 +1,5 @@
 const NotificationModel = require('../models/Notification');
+const NotificationService = require('../services/notificationService');
 
 // GET /api/notifications
 exports.getNotifications = async (req, res, next) => {
@@ -31,21 +32,15 @@ exports.markAsRead = async (req, res, next) => {
 exports.createNotification = async (req, res, next) => {
     try {
         const { title, message, type, machine_id, user_id, user_type } = req.body;
-        if (!title || !message) {
-            return res.status(400).json({ success: false, message: 'title and message are required' });
-        }
-        const id = await NotificationModel.create({ title, message, type, machine_id, user_id, user_type });
-        const notification = await NotificationModel.findById(id);
+        const notification = await NotificationService.createNotificationAndBroadcast(req.app, {
+            title,
+            message,
+            type,
+            machine_id,
+            user_id,
+            user_type
+        });
         res.status(201).json({ success: true, data: notification });
-
-        // Broadcast via socket
-        try {
-            const io = req.app.get('io');
-            if (io) {
-                const ns = io.of('/machines');
-                ns.emit('notification:new', { data: notification, timestamp: new Date().toISOString() });
-            }
-        } catch (e) { /* ignore socket error */ }
     } catch (error) { next(error); }
 };
 

@@ -503,7 +503,25 @@ const initTables = async () => {
         `);
 
         // ─────────────────────────────────────────────────
-        // Table 24: Audit Logs
+        // Table 24: Auth OTPs (email OTP for login/register)
+        // ─────────────────────────────────────────────────
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS auth_otps (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                email VARCHAR(100) NOT NULL,
+                user_type ENUM('business', 'operator') NOT NULL,
+                purpose ENUM('register', 'login') NOT NULL,
+                otp_hash VARCHAR(255) NOT NULL,
+                attempts INT DEFAULT 0,
+                verified BOOLEAN DEFAULT FALSE,
+                expires_at DATETIME(3) NOT NULL,
+                created_at DATETIME(3) DEFAULT CURRENT_TIMESTAMP(3),
+                INDEX idx_auth_otp_lookup (email, user_type, purpose, created_at)
+            )
+        `);
+
+        // ─────────────────────────────────────────────────
+        // Table 25: Audit Logs
         // ─────────────────────────────────────────────────
         await pool.query(`
             CREATE TABLE IF NOT EXISTS audit_logs (

@@ -82,13 +82,17 @@ app.get('/', (req, res) => {
             health: `${config.api.prefix}/health`,
             api_docs: '/api-docs',
             business_auth: {
-                register: `${config.api.prefix}/business/auth/register  [POST: username, email, password]`,
+                register_request_otp: `${config.api.prefix}/business/auth/register/request-otp  [POST: name, email]`,
+                register: `${config.api.prefix}/business/auth/register  [POST: name, email, otp]`,
+                login_request_otp: `${config.api.prefix}/business/auth/login/request-otp  [POST: email]`,
                 login: `${config.api.prefix}/business/auth/login`,
                 logout: `${config.api.prefix}/business/auth/logout`,
                 profile: `${config.api.prefix}/business/auth/me`
             },
             operator_auth: {
-                register: `${config.api.prefix}/operator/auth/register  [POST: username, email, password]`,
+                register_request_otp: `${config.api.prefix}/operator/auth/register/request-otp  [POST: name, email]`,
+                register: `${config.api.prefix}/operator/auth/register  [POST: name, email, otp]`,
+                login_request_otp: `${config.api.prefix}/operator/auth/login/request-otp  [POST: email]`,
                 login: `${config.api.prefix}/operator/auth/login`,
                 logout: `${config.api.prefix}/operator/auth/logout`,
                 profile: `${config.api.prefix}/operator/auth/me`
@@ -115,29 +119,23 @@ app.get('/', (req, res) => {
             },
             workflows: `${config.api.prefix}/workflows/:workOrderId`,
             shifts: {
-                manage: `${config.api.prefix}/shifts`,
-                assign: `${config.api.prefix}/shifts/assign`,
-                current: `${config.api.prefix}/shifts/current`,
-                performance: `${config.api.prefix}/shifts/:shiftId/performance`
+                removed: 'Shift APIs removed from active backend'
             },
             inventory: {
-                materials: `${config.api.prefix}/inventory/materials`,
-                consume: `${config.api.prefix}/inventory/consume`
+                removed: 'Inventory APIs removed from active backend'
             },
             quality: {
-                inspection: `${config.api.prefix}/quality/inspection`,
-                reports: `${config.api.prefix}/quality/reports`
+                removed: 'Quality APIs removed from active backend'
             },
             scheduling: {
-                plan: `${config.api.prefix}/scheduling/plan`,
-                list: `${config.api.prefix}/scheduling`
+                removed: 'Scheduling APIs removed from active backend'
             },
             dashboard: {
                 overview: `${config.api.prefix}/dashboard/overview`,
                 work_orders: `${config.api.prefix}/dashboard/work-orders`
             },
             notifications: `${config.api.prefix}/notifications`,
-            audit_logs: `${config.api.prefix}/audit-logs`,
+            audit_logs: 'Audit log APIs removed from active backend',
             alerts: `${config.api.prefix}/alerts`,
             operator: {
                 checklist: `${config.api.prefix}/operator/checklist`,

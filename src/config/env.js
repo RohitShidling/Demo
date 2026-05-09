@@ -15,25 +15,25 @@ module.exports = {
 
   // JWT Authentication (shared fallback)
   jwt: {
-    secret: process.env.JWT_SECRET || 'default_jwt_secret_change_me',
+    secret: process.env.JWT_SECRET || '',
     expiresIn: process.env.JWT_EXPIRES_IN || '2d',
-    refreshSecret: process.env.JWT_REFRESH_SECRET || 'default_refresh_secret_change_me',
+    refreshSecret: process.env.JWT_REFRESH_SECRET || '',
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '2d'
   },
 
   // Business (Admin) JWT — dedicated secrets
   businessJwt: {
-    secret: process.env.BUSINESS_JWT_SECRET || 'mes_business_admin_jwt_2026_xB9kQ3mN7pL2wR5',
+    secret: process.env.BUSINESS_JWT_SECRET || '',
     expiresIn: process.env.BUSINESS_JWT_EXPIRES_IN || '2d',
-    refreshSecret: process.env.BUSINESS_JWT_REFRESH_SECRET || 'mes_business_refresh_2026_zA4vD8nF6jH1cT3',
+    refreshSecret: process.env.BUSINESS_JWT_REFRESH_SECRET || '',
     refreshExpiresIn: process.env.BUSINESS_JWT_REFRESH_EXPIRES_IN || '2d'
   },
 
   // Operator JWT — dedicated secrets
   operatorJwt: {
-    secret: process.env.OPERATOR_JWT_SECRET || 'mes_operator_jwt_2026_yE5rS2tG9kM4bW7',
+    secret: process.env.OPERATOR_JWT_SECRET || '',
     expiresIn: process.env.OPERATOR_JWT_EXPIRES_IN || '2d',
-    refreshSecret: process.env.OPERATOR_JWT_REFRESH_SECRET || 'mes_operator_refresh_2026_uP6qC1fJ3nX8hV0',
+    refreshSecret: process.env.OPERATOR_JWT_REFRESH_SECRET || '',
     refreshExpiresIn: process.env.OPERATOR_JWT_REFRESH_EXPIRES_IN || '2d'
   },
 
@@ -55,5 +55,21 @@ module.exports = {
   },
 
   // Logging
-  logLevel: process.env.LOG_LEVEL || 'debug'
+  logLevel: process.env.LOG_LEVEL || 'debug',
+
+  // SMTP / Email
+  smtp: {
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT || '587', 10),
+    secure: process.env.SMTP_SECURE === 'true',
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    fromEmail: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || ''
+  },
+
+  // OTP
+  otp: {
+    expiryMinutes: parseInt(process.env.OTP_EXPIRY_MINUTES || '10', 10),
+    maxAttempts: parseInt(process.env.OTP_MAX_ATTEMPTS || '5', 10)
+  }
 };

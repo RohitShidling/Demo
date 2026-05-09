@@ -4,6 +4,7 @@ const router = express.Router();
 // Import all route modules
 const businessAuthRoutes = require('./businessAuthRoutes');
 const operatorAuthRoutes = require('./operatorAuthRoutes');
+const authRoutes = require('./authRoutes');
 const machineRoutes = require('./machineRoutes');
 const workOrderRoutes = require('./workOrderRoutes');
 const alertRoutes = require('./alertRoutes');
@@ -11,12 +12,12 @@ const workflowRoutes = require('./workflowRoutes');
 const operatorRoutes = require('./operatorRoutes');
 const productionRoutes = require('./productionRoutes');
 const checklistRoutes = require('./checklistRoutes');
-const shiftRoutes = require('./shiftRoutes');
+const dashboardRoutes = require('./dashboardRoutes');
+const notificationRoutes = require('./notificationRoutes');
 const inventoryRoutes = require('./inventoryRoutes');
 const qualityRoutes = require('./qualityRoutes');
 const schedulingRoutes = require('./schedulingRoutes');
-const dashboardRoutes = require('./dashboardRoutes');
-const notificationRoutes = require('./notificationRoutes');
+const shiftRoutes = require('./shiftRoutes');
 const auditLogRoutes = require('./auditLogRoutes');
 
 // Business Auth Routes: /api/business/auth/*
@@ -24,6 +25,9 @@ router.use('/business/auth', businessAuthRoutes);
 
 // Operator Auth Routes: /api/operator/auth/*
 router.use('/operator/auth', operatorAuthRoutes);
+
+// Generic Auth Routes: /api/auth/*
+router.use('/auth', authRoutes);
 
 // Machine Routes: /api/machines/*, /api/ingest/*
 router.use('/', machineRoutes);
@@ -46,8 +50,11 @@ router.use('/production', productionRoutes);
 // Machine Checklist Routes: /api/checklist/*
 router.use('/checklist', checklistRoutes);
 
-// Shift Routes: /api/shifts/*
-router.use('/shifts', shiftRoutes);
+// Dashboard Routes: /api/dashboard/*
+router.use('/dashboard', dashboardRoutes);
+
+// Notification Routes: /api/notifications/*
+router.use('/notifications', notificationRoutes);
 
 // Inventory Routes: /api/inventory/*
 router.use('/inventory', inventoryRoutes);
@@ -58,11 +65,8 @@ router.use('/quality', qualityRoutes);
 // Scheduling Routes: /api/scheduling/*
 router.use('/scheduling', schedulingRoutes);
 
-// Dashboard Routes: /api/dashboard/*
-router.use('/dashboard', dashboardRoutes);
-
-// Notification Routes: /api/notifications/*
-router.use('/notifications', notificationRoutes);
+// Shift Routes: /api/shifts/*
+router.use('/shifts', shiftRoutes);
 
 // Audit Log Routes: /api/audit-logs/*
 router.use('/audit-logs', auditLogRoutes);
@@ -76,6 +80,7 @@ router.get('/health', (req, res) => {
         features: [
             'Business Auth (Admin) — dedicated JWT',
             'Operator Auth — dedicated JWT',
+            'Email OTP Registration/Login',
             'Machine Management',
             'Machine Checklist',
             'Work Orders with Targeted End Date',
@@ -83,14 +88,9 @@ router.get('/health', (req, res) => {
             'Machine Double-Assignment Prevention',
             'Workflows',
             'Production Tracking',
-            'Shift Management',
             'Downtime Analytics',
-            'Inventory Management',
-            'Quality Inspections',
-            'Production Scheduling',
             'Business Dashboard',
             'Notifications (CRUD + Delete)',
-            'Audit Logs',
             'Part Rejections',
             'Machine Breakdowns → Auto Notifications',
             'Operator Skills',
@@ -100,7 +100,12 @@ router.get('/health', (req, res) => {
             'Machine Checklist Overview API',
             'Machine Running Status API',
             'Bar Graph Visualization (Daily & Hourly)',
-            'Real-time Socket.IO'
+            'Real-time Socket.IO',
+            'Inventory Management',
+            'Quality Inspection Reports',
+            'Production Scheduling',
+            'Shift Management',
+            'Activity Audit Logs'
         ]
     });
 });

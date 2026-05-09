@@ -1,6 +1,7 @@
 const OperatorService = require('../services/operatorService');
 const multer = require('multer');
 const config = require('../config/env');
+const NotificationService = require('../services/notificationService');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.upload.maxFileSize } });
 
@@ -173,8 +174,20 @@ exports.reportBreakdown = async (req, res, next) => {
         });
         res.status(201).json({ success: true, data });
 
+        // Auto-create internal notification via shared notification create flow
+        const notification = await NotificationService.createNotificationAndBroadcast(req.app, {
+            title: `Machine Breakdown: ${machine_id}`,
+            message: `Machine ${machine_id} reported breakdown reason ${data.breakdown_reason || breakdown_reason}.`,
+            type: 'ERROR',
+            machine_id,
+            user_id: null,
+            user_type: null
+        });
+
         const ns = getIO(req);
-        if (ns) ns.emit('breakdown:reported', { data, timestamp: new Date().toISOString() });
+        if (ns) {
+            ns.emit('breakdown:reported', { data, timestamp: new Date().toISOString() });
+        }
     } catch (error) { next(error); }
 };
 

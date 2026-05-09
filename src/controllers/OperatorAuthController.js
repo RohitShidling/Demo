@@ -2,26 +2,45 @@ const OperatorAuthService = require('../services/operatorAuthService');
 
 exports.register = async (req, res, next) => {
     try {
-        const { username, email, password } = req.body;
-        if (!username || !email || !password) {
-            return res.status(400).json({ success: false, message: 'username, email, and password are required' });
+        const { name, email, otp } = req.body;
+        if (!name || !email || !otp) {
+            return res.status(400).json({ success: false, message: 'name, email, and otp are required' });
         }
-        if (password.length < 6) {
-            return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
-        }
-        const result = await OperatorAuthService.register({ username, email, password });
+        const result = await OperatorAuthService.register({ name, email, otp });
         res.status(201).json({ success: true, message: result.message, data: result.user });
+    } catch (error) { next(error); }
+};
+
+exports.requestRegisterOtp = async (req, res, next) => {
+    try {
+        const { name, email } = req.body;
+        if (!name || !email) {
+            return res.status(400).json({ success: false, message: 'name and email are required' });
+        }
+        const result = await OperatorAuthService.requestRegisterOtp({ name, email });
+        res.status(200).json({ success: true, message: result.message, data: { email, expiresAt: result.expiresAt } });
     } catch (error) { next(error); }
 };
 
 exports.login = async (req, res, next) => {
     try {
-        const { email, password } = req.body;
-        if (!email || !password) {
-            return res.status(400).json({ success: false, message: 'email and password are required' });
+        const { email, otp } = req.body;
+        if (!email || !otp) {
+            return res.status(400).json({ success: false, message: 'email and otp are required' });
         }
-        const result = await OperatorAuthService.login({ email, password });
+        const result = await OperatorAuthService.login({ email, otp });
         res.status(200).json({ success: true, message: 'Login successful', data: { user: result.user, accessToken: result.accessToken, refreshToken: result.refreshToken } });
+    } catch (error) { next(error); }
+};
+
+exports.requestLoginOtp = async (req, res, next) => {
+    try {
+        const { email } = req.body;
+        if (!email) {
+            return res.status(400).json({ success: false, message: 'email is required' });
+        }
+        const result = await OperatorAuthService.requestLoginOtp({ email });
+        res.status(200).json({ success: true, message: result.message, data: { email, expiresAt: result.expiresAt } });
     } catch (error) { next(error); }
 };
 
