@@ -35,7 +35,11 @@ class OperatorAuthService {
 
     async requestRegisterOtp({ name, email }) {
         const existingEmail = await OperatorUserModel.findByEmail(email);
-        if (existingEmail) { const e = new Error('Email already exists'); e.statusCode = 409; throw e; }
+        if (existingEmail) {
+            const e = new Error('This email is already registered. Please sign in instead.');
+            e.statusCode = 409;
+            throw e;
+        }
 
         const { otp, expiresAt } = await AuthOtpModel.create({ email, user_type: 'operator', purpose: 'register' });
         await sendOtpEmail({ to: email, otp, purpose: 'register' });
@@ -62,13 +66,26 @@ class OperatorAuthService {
         const randomPassword = crypto.randomUUID();
         const userId = await OperatorUserModel.create({ username, email, password: randomPassword });
         const user = await OperatorUserModel.findById(userId);
+        const accessToken = this.generateAccessToken(user);
+        const refreshToken = this.generateRefreshToken(user);
+        await OperatorUserModel.updateRefreshToken(user.id, refreshToken);
+        await OperatorUserModel.updateLastLogin(user.id);
         logger.info(`Operator registered: ${email}`);
-        return { user, message: 'Operator registered successfully' };
+        return {
+            user: { id: user.id, username: user.username, email: user.email, role: 'operator', userType: 'operator' },
+            accessToken,
+            refreshToken,
+            message: 'Account created. You are now signed in.'
+        };
     }
 
     async requestLoginOtp({ email }) {
         const user = await OperatorUserModel.findByEmail(email);
-        if (!user) { const e = new Error('User with this email does not exist'); e.statusCode = 401; throw e; }
+        if (!user) {
+            const e = new Error('No account found for this email. Please register first.');
+            e.statusCode = 401;
+            throw e;
+        }
         if (!user.is_active) { const e = new Error('Account deactivated'); e.statusCode = 403; throw e; }
         const { otp, expiresAt } = await AuthOtpModel.create({ email, user_type: 'operator', purpose: 'login' });
         await sendOtpEmail({ to: email, otp, purpose: 'login' });

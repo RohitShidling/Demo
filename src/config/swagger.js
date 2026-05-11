@@ -122,7 +122,7 @@ const options = {
                         work_order_name: { type: 'string' },
                         target: { type: 'integer' },
                         description: { type: 'string', nullable: true },
-                        status: { type: 'string', enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] },
+                        status: { type: 'string', enum: ['CREATED', 'NOT_STARTED', 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] },
                         targeted_end_date: { type: 'string', format: 'date', nullable: true },
                         created_at: { type: 'string', format: 'date-time' },
                         updated_at: { type: 'string', format: 'date-time' }
@@ -311,7 +311,8 @@ const options = {
                                     }
                                 }
                             }
-                        }
+                        },
+                        '409': { description: 'Email already registered — use login' }
                     }
                 }
             },
@@ -338,7 +339,7 @@ const options = {
                     },
                     responses: {
                         '201': {
-                            description: 'Registered',
+                            description: 'Registered and signed in (JWT returned)',
                             content: {
                                 'application/json': {
                                     schema: {
@@ -346,7 +347,7 @@ const options = {
                                         properties: {
                                             success: { type: 'boolean' },
                                             message: { type: 'string' },
-                                            data: { $ref: '#/components/schemas/BusinessUser' }
+                                            data: { $ref: '#/components/schemas/AuthData' }
                                         }
                                     }
                                 }
@@ -529,7 +530,8 @@ const options = {
                                     }
                                 }
                             }
-                        }
+                        },
+                        '409': { description: 'Email already registered — use login instead' }
                     }
                 }
             },
@@ -556,7 +558,7 @@ const options = {
                     },
                     responses: {
                         '201': {
-                            description: 'Registered',
+                            description: 'Registered and signed in (JWT returned)',
                             content: {
                                 'application/json': {
                                     schema: {
@@ -564,7 +566,7 @@ const options = {
                                         properties: {
                                             success: { type: 'boolean' },
                                             message: { type: 'string' },
-                                            data: { $ref: '#/components/schemas/OperatorUser' }
+                                            data: { $ref: '#/components/schemas/AuthData' }
                                         }
                                     }
                                 }
@@ -938,8 +940,9 @@ const options = {
                     summary: 'Get visualization data',
                     parameters: [
                         { name: 'machineId', in: 'path', required: true, schema: { type: 'string' } },
-                        { name: 'filter', in: 'query', schema: { type: 'string', enum: ['hourly', 'daily', 'calendar'] } },
-                        { name: 'date', in: 'query', schema: { type: 'string', format: 'date' } }
+                        { name: 'filter', in: 'query', schema: { type: 'string', enum: ['hourly', 'daily', 'calendar', 'monthly'] } },
+                        { name: 'date', in: 'query', schema: { type: 'string', format: 'date' } },
+                        { name: 'month', in: 'query', schema: { type: 'string', example: '2026-05', description: 'Required with filter=monthly (YYYY-MM)' } }
                     ],
                     responses: {
                         '200': { description: 'Visualization data' }
@@ -1005,7 +1008,8 @@ const options = {
                     security: [],
                     parameters: [{ name: 'pathId', in: 'path', required: true, schema: { type: 'string' } }],
                     responses: {
-                        '200': { description: 'Received', content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string', example: 'received' } } } } } }
+                        '200': { description: 'Received', content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string', example: 'received' } } } } } },
+                        '403': { description: 'Machine not assigned to an active work order' }
                     }
                 }
             },
@@ -1082,6 +1086,16 @@ const options = {
                     }
                 }
             },
+            '/work-orders/{workOrderId}/production-metrics': {
+                get: {
+                    tags: ['Work Orders'],
+                    summary: 'Work order production metrics (produced, accepted, rejected, target date)',
+                    parameters: [{ name: 'workOrderId', in: 'path', required: true, schema: { type: 'string' } }],
+                    responses: {
+                        '200': { description: 'Aggregated metrics (same shape as /summary without group_by)' }
+                    }
+                }
+            },
             '/work-orders/{workOrderId}/assign': {
                 post: {
                     tags: ['Work Orders'],
@@ -1125,154 +1139,6 @@ const options = {
                 }
             },
 
-            // ─────────────────────────────────────────────────────────────
-            // INVENTORY
-            // ─────────────────────────────────────────────────────────────
-            '/inventory/materials': {
-                get: {
-                    tags: ['Inventory'],
-                    summary: 'Get all materials',
-                    responses: {
-                        '200': { description: 'Materials list', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { type: 'array', items: { $ref: '#/components/schemas/Material' } } } } } } }
-                    }
-                },
-                post: {
-                    tags: ['Inventory'],
-                    summary: 'Add material',
-                    requestBody: {
-                        required: true,
-                        content: { 'application/json': { schema: { type: 'object', required: ['material_name'], properties: { material_name: { type: 'string' }, quantity: { type: 'number' }, unit: { type: 'string' } } } } }
-                    },
-                    responses: {
-                        '201': { description: 'Added', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/Material' } } } } } }
-                    }
-                }
-            },
-            '/inventory/consume': {
-                post: {
-                    tags: ['Inventory'],
-                    summary: 'Consume material',
-                    requestBody: {
-                        required: true,
-                        content: { 'application/json': { schema: { type: 'object', required: ['material_id', 'quantity_used'], properties: { material_id: { type: 'integer' }, work_order_id: { type: 'string' }, quantity_used: { type: 'number' } } } } }
-                    },
-                    responses: {
-                        '200': { description: 'Consumed', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, message: { type: 'string' }, data: { type: 'object', properties: { consumption_id: { type: 'integer' } } } } } } } }
-                    }
-                }
-            },
-
-            // ─────────────────────────────────────────────────────────────
-            // QUALITY
-            // ─────────────────────────────────────────────────────────────
-            '/quality/inspection': {
-                post: {
-                    tags: ['Quality'],
-                    summary: 'Record quality inspection',
-                    requestBody: {
-                        required: true,
-                        content: { 'application/json': { schema: { type: 'object', required: ['machine_id', 'status'], properties: { machine_id: { type: 'string' }, work_order_id: { type: 'string' }, status: { type: 'string', enum: ['PASS', 'FAIL'] }, parameters: { type: 'object' }, remarks: { type: 'string' } } } } }
-                    },
-                    responses: {
-                        '201': { description: 'Recorded', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/QualityInspection' } } } } } }
-                    }
-                }
-            },
-            '/quality/reports': {
-                get: {
-                    tags: ['Quality'],
-                    summary: 'Get quality reports',
-                    parameters: [
-                        { name: 'work_order_id', in: 'query', schema: { type: 'string' } },
-                        { name: 'machine_id', in: 'query', schema: { type: 'string' } }
-                    ],
-                    responses: {
-                        '200': { description: 'Reports list', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { type: 'array', items: { $ref: '#/components/schemas/QualityInspection' } } } } } } }
-                    }
-                }
-            },
-
-            // ─────────────────────────────────────────────────────────────
-            // SCHEDULING
-            // ─────────────────────────────────────────────────────────────
-            '/scheduling/plan': {
-                post: {
-                    tags: ['Scheduling'],
-                    summary: 'Create production plan',
-                    requestBody: {
-                        required: true,
-                        content: { 'application/json': { schema: { type: 'object', required: ['work_order_id', 'machine_id', 'start_time', 'end_time'], properties: { work_order_id: { type: 'string' }, machine_id: { type: 'string' }, start_time: { type: 'string', format: 'date-time' }, end_time: { type: 'string', format: 'date-time' } } } } }
-                    },
-                    responses: {
-                        '201': { description: 'Created', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/Schedule' } } } } } }
-                    }
-                }
-            },
-            '/scheduling': {
-                get: {
-                    tags: ['Scheduling'],
-                    summary: 'Get full schedule',
-                    responses: {
-                        '200': { description: 'Schedule list', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { type: 'array', items: { $ref: '#/components/schemas/Schedule' } } } } } } }
-                    }
-                }
-            },
-
-            // ─────────────────────────────────────────────────────────────
-            // SHIFTS
-            // ─────────────────────────────────────────────────────────────
-            '/shifts': {
-                get: {
-                    tags: ['Shifts'],
-                    summary: 'List all shifts',
-                    responses: {
-                        '200': { description: 'Shifts list', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { type: 'array', items: { $ref: '#/components/schemas/Shift' } } } } } } }
-                    }
-                },
-                post: {
-                    tags: ['Shifts'],
-                    summary: 'Create shift',
-                    requestBody: {
-                        required: true,
-                        content: { 'application/json': { schema: { type: 'object', required: ['shift_name', 'start_time', 'end_time'], properties: { shift_name: { type: 'string' }, start_time: { type: 'string', example: '08:00' }, end_time: { type: 'string', example: '16:00' } } } } }
-                    },
-                    responses: {
-                        '201': { description: 'Created', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/Shift' } } } } } }
-                    }
-                }
-            },
-            '/shifts/assign': {
-                post: {
-                    tags: ['Shifts'],
-                    summary: 'Assign operator to shift',
-                    requestBody: {
-                        required: true,
-                        content: { 'application/json': { schema: { type: 'object', required: ['operator_id', 'shift_id', 'date'], properties: { operator_id: { type: 'integer' }, shift_id: { type: 'integer' }, date: { type: 'string', format: 'date' } } } } }
-                    },
-                    responses: {
-                        '201': { description: 'Assigned' }
-                    }
-                }
-            },
-
-            // ─────────────────────────────────────────────────────────────
-            // AUDIT LOGS
-            // ─────────────────────────────────────────────────────────────
-            '/audit-logs': {
-                get: {
-                    tags: ['Audit Logs'],
-                    summary: 'Get activity logs',
-                    parameters: [
-                        { name: 'limit', in: 'query', schema: { type: 'integer', default: 100 } },
-                        { name: 'offset', in: 'query', schema: { type: 'integer', default: 0 } },
-                        { name: 'entity_type', in: 'query', schema: { type: 'string' } },
-                        { name: 'entity_id', in: 'query', schema: { type: 'string' } }
-                    ],
-                    responses: {
-                        '200': { description: 'Logs list', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { type: 'array', items: { $ref: '#/components/schemas/AuditLog' } } } } } } }
-                    }
-                }
-            },
             // ─────────────────────────────────────────────────────────────
             // PRODUCTION
             // ─────────────────────────────────────────────────────────────
@@ -1570,132 +1436,6 @@ const options = {
                     },
                     responses: {
                         '201': { description: 'Reported' }
-                    }
-                }
-            },
-
-            // ─────────────────────────────────────────────────────────────
-            // INVENTORY
-            // ─────────────────────────────────────────────────────────────
-            '/inventory/materials': {
-                get: {
-                    tags: ['Inventory'],
-                    summary: 'Get all materials',
-                    responses: {
-                        '200': {
-                            description: 'Materials list',
-                            content: {
-                                'application/json': {
-                                    schema: {
-                                        type: 'object',
-                                        properties: {
-                                            success: { type: 'boolean' },
-                                            data: { type: 'array', items: { $ref: '#/components/schemas/Material' } }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                post: {
-                    tags: ['Inventory'],
-                    summary: 'Add new material',
-                    requestBody: {
-                        required: true,
-                        content: {
-                            'application/json': {
-                                schema: {
-                                    type: 'object',
-                                    required: ['material_name', 'quantity', 'unit'],
-                                    properties: {
-                                        material_name: { type: 'string' },
-                                        quantity: { type: 'number' },
-                                        unit: { type: 'string' }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    responses: {
-                        '201': { description: 'Added' }
-                    }
-                }
-            },
-            '/inventory/consume': {
-                post: {
-                    tags: ['Inventory'],
-                    summary: 'Consume material',
-                    requestBody: {
-                        required: true,
-                        content: {
-                            'application/json': {
-                                schema: {
-                                    type: 'object',
-                                    required: ['material_id', 'quantity'],
-                                    properties: {
-                                        material_id: { type: 'integer' },
-                                        quantity: { type: 'number' }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    responses: {
-                        '200': { description: 'Consumed' }
-                    }
-                }
-            },
-
-            // ─────────────────────────────────────────────────────────────
-            // QUALITY
-            // ─────────────────────────────────────────────────────────────
-            '/quality/inspection': {
-                post: {
-                    tags: ['Quality'],
-                    summary: 'Record quality inspection',
-                    requestBody: {
-                        required: true,
-                        content: {
-                            'application/json': {
-                                schema: {
-                                    type: 'object',
-                                    required: ['machine_id', 'status', 'parameters'],
-                                    properties: {
-                                        machine_id: { type: 'string' },
-                                        work_order_id: { type: 'string' },
-                                        status: { type: 'string', enum: ['PASS', 'FAIL'] },
-                                        parameters: { type: 'object' },
-                                        remarks: { type: 'string' }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    responses: {
-                        '201': { description: 'Recorded' }
-                    }
-                }
-            },
-            '/quality/reports': {
-                get: {
-                    tags: ['Quality'],
-                    summary: 'Get quality reports',
-                    responses: {
-                        '200': {
-                            description: 'Reports list',
-                            content: {
-                                'application/json': {
-                                    schema: {
-                                        type: 'object',
-                                        properties: {
-                                            success: { type: 'boolean' },
-                                            data: { type: 'array', items: { $ref: '#/components/schemas/QualityInspection' } }
-                                        }
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             },

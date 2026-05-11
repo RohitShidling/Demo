@@ -84,16 +84,27 @@ class PartRejectionModel {
         return rows;
     }
 
+    /** Counts only open (not rework-completed) rejections */
     static async getTotalRejectedByMachine(machine_id) {
         const pool = getPool();
-        const query = `SELECT COALESCE(SUM(rejected_count), 0) as total_rejected FROM part_rejections WHERE machine_id = ?`;
+        const query = `
+            SELECT COALESCE(SUM(rejected_count), 0) as total_rejected
+            FROM part_rejections
+            WHERE machine_id = ?
+              AND (rework_status IS NULL OR rework_status = 'PENDING')
+        `;
         const [rows] = await pool.execute(query, [machine_id]);
         return rows[0].total_rejected;
     }
 
     static async getTotalRejectedByWorkOrder(work_order_id) {
         const pool = getPool();
-        const query = `SELECT COALESCE(SUM(rejected_count), 0) as total_rejected FROM part_rejections WHERE work_order_id = ?`;
+        const query = `
+            SELECT COALESCE(SUM(rejected_count), 0) as total_rejected
+            FROM part_rejections
+            WHERE work_order_id = ?
+              AND (rework_status IS NULL OR rework_status = 'PENDING')
+        `;
         const [rows] = await pool.execute(query, [work_order_id]);
         return rows[0].total_rejected;
     }
@@ -107,6 +118,7 @@ class PartRejectionModel {
             FROM part_rejections pr
             JOIN machines m ON pr.machine_id = m.machine_id
             WHERE pr.work_order_id = ?
+              AND (pr.rework_status IS NULL OR pr.rework_status = 'PENDING')
             GROUP BY pr.machine_id, m.machine_name
             ORDER BY total_rejected DESC
         `;

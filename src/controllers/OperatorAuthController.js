@@ -7,7 +7,15 @@ exports.register = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'name, email, and otp are required' });
         }
         const result = await OperatorAuthService.register({ name, email, otp });
-        res.status(201).json({ success: true, message: result.message, data: result.user });
+        res.status(201).json({
+            success: true,
+            message: result.message,
+            data: {
+                user: result.user,
+                accessToken: result.accessToken,
+                refreshToken: result.refreshToken
+            }
+        });
     } catch (error) { next(error); }
 };
 

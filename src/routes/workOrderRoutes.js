@@ -33,5 +33,7 @@ router.get('/:workOrderId/machines/:machineId/rejections', WorkOrderController.g
 router.get('/:workOrderId/production-summary', ProductionController.getProductionSummary);
 router.get('/:workOrderId/machine-production', ProductionController.getMachineProduction);
 router.get('/:workOrderId/summary', ProductionController.getWorkOrderSummary);
+/** Aggregated production, acceptance, rejection, target date (same payload as /summary) */
+router.get('/:workOrderId/production-metrics', ProductionController.getWorkOrderProductionMetrics);
 
 module.exports = router;

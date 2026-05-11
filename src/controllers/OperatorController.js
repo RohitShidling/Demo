@@ -89,6 +89,18 @@ exports.markReworkCompleted = async (req, res, next) => {
             { rework_reason, rework_comments, reworked_by: req.user?.id }
         );
         res.json({ success: true, data });
+
+        const ns = getIO(req);
+        if (ns && data?.machine_id) {
+            ns.emit('rejection:updated', {
+                event: 'rework_completed',
+                machine_id: data.machine_id,
+                rejection_id: data.id,
+                work_order_id: data.work_order_id || null,
+                operator: req.user?.username,
+                timestamp: new Date().toISOString()
+            });
+        }
     } catch (error) { next(error); }
 };
 

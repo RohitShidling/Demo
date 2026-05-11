@@ -40,6 +40,9 @@ exports.handleIngest = async (req, res, next) => {
         }
     } catch (error) {
         if (error.message.includes('not found')) return res.status(404).json({ message: error.message });
+        if (error.statusCode === 403) {
+            return res.status(403).json({ success: false, message: error.message });
+        }
         next(error);
     }
 };
@@ -90,8 +93,8 @@ exports.getMachineDetails = async (req, res, next) => {
 
 exports.getMachineVisualization = async (req, res, next) => {
     try {
-        const { filter, start_date, end_date, date } = req.query;
-        const data = await MachineService.getMachineVisualization(req.params.machineId, { filter, start_date, end_date, date });
+        const { filter, start_date, end_date, date, month } = req.query;
+        const data = await MachineService.getMachineVisualization(req.params.machineId, { filter, start_date, end_date, date, month });
         res.json({ success: true, data });
     } catch (error) { next(error); }
 };

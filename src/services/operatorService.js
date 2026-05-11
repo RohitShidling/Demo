@@ -24,14 +24,19 @@ const BREAKDOWN_REASONS = [
 const REWORK_REASONS = ['SCRATCH_MARK', 'OILY_CONTENT'];
 
 class OperatorService {
-    normalizeReworkReason(reason) {
+    /**
+     * Normalize rework reason for storage (uppercase, underscores).
+     * When strict=true, only predefined enum values are allowed (e.g. completing rework with legacy clients).
+     */
+    normalizeReworkReason(reason, { strict = false } = {}) {
         if (reason === undefined || reason === null || String(reason).trim() === '') return null;
-        const normalized = String(reason).trim().toUpperCase().replace(/\s+/g, '_');
-        if (!REWORK_REASONS.includes(normalized)) {
+        const normalized = String(reason).trim().toUpperCase().replace(/\s+/g, '_').slice(0, 80);
+        if (strict && !REWORK_REASONS.includes(normalized)) {
             const e = new Error(`Invalid rework_reason. Allowed values: ${REWORK_REASONS.join(', ')}`);
             e.statusCode = 400;
             throw e;
         }
+        if (!strict && !normalized) return null;
         return normalized;
     }
 
@@ -74,7 +79,7 @@ class OperatorService {
         const machine = await MachineModel.findById(machine_id);
         if (!machine) { const e = new Error('Machine not found'); e.statusCode = 404; throw e; }
 
-        const normalizedReworkReason = this.normalizeReworkReason(rework_reason);
+        const normalizedReworkReason = this.normalizeReworkReason(rework_reason, { strict: false });
         const id = await PartRejectionModel.create({
             machine_id,
             work_order_id,
@@ -137,13 +142,20 @@ class OperatorService {
     async markReworkCompleted(rejection_id, { rework_reason, rework_comments, reworked_by }) {
         const rejection = await PartRejectionModel.findById(rejection_id);
         if (!rejection) { const e = new Error('Rejected part not found'); e.statusCode = 404; throw e; }
-
-        const normalizedReworkReason = this.normalizeReworkReason(rework_reason);
-        if (!normalizedReworkReason) {
-            const e = new Error('rework_reason is required');
+        if (rejection.rework_status === 'REWORKED') {
+            const e = new Error('This rejection is already marked as reworked');
             e.statusCode = 400;
             throw e;
         }
+
+        const fromInput = rework_reason !== undefined && String(rework_reason).trim() !== ''
+            ? this.normalizeReworkReason(rework_reason, { strict: false })
+            : null;
+        const normalizedReworkReason = fromInput || rejection.rework_reason || 'REWORK_COMPLETED';
+
+        const qty = Math.max(1, parseInt(rejection.rejected_count, 10) || 1);
+        const woId = rejection.work_order_id;
+        const machineId = rejection.machine_id;
 
         await PartRejectionModel.updateRework(rejection_id, {
             rework_status: 'REWORKED',
@@ -151,12 +163,25 @@ class OperatorService {
             rework_comments,
             reworked_by
         });
+
+        if (woId) {
+            try { await WorkOrderModel.decrementRejected(woId, qty); } catch (_) { /* ignore */ }
+            try { await WorkOrderMachineModel.decrementRejectedCount(woId, machineId, qty); } catch (_) { /* ignore */ }
+        }
+
+        try {
+            const rejDate = rejection.created_at
+                ? new Date(rejection.created_at).toISOString().split('T')[0]
+                : new Date().toISOString().split('T')[0];
+            await DailyProductionModel.decrementRejected(machineId, rejDate, qty);
+        } catch (_) { /* ignore */ }
+
         logger.info(`Rejected part ${rejection_id} marked as reworked`);
         return await PartRejectionModel.findById(rejection_id);
     }
 
     getReworkReasons() {
-        return REWORK_REASONS;
+        return [...REWORK_REASONS];
     }
 
     // ── Operator Skills ──
@@ -252,7 +277,7 @@ class OperatorService {
         await MachineBreakdownModel.updateStatus(breakdown_id, status);
         // If resolved, set machine back to NOT_STARTED
         if (status === 'RESOLVED') {
-            await MachineModel.updateStatus(bd.machine_id, 'NOT_STARTED');
+            await MachineModel.updateStatus(bd.machine_id, 'RUNNING');
         }
         logger.info(`Breakdown ${breakdown_id} status → ${status}`);
         return await MachineBreakdownModel.findById(breakdown_id);

@@ -169,7 +169,7 @@ const initTables = async () => {
                 work_order_name VARCHAR(200) NOT NULL,
                 target INT NOT NULL DEFAULT 0,
                 description TEXT,
-                status ENUM('CREATED', 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED') DEFAULT 'CREATED',
+                status ENUM('CREATED', 'NOT_STARTED', 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED') DEFAULT 'CREATED',
                 total_produced INT DEFAULT 0,
                 total_accepted INT DEFAULT 0,
                 total_rejected INT DEFAULT 0,
@@ -179,9 +179,9 @@ const initTables = async () => {
             )
         `);
 
-        // Add CREATED to status enum if needed
+        // Work order status enum (includes NOT_STARTED for operator UI)
         try {
-            await pool.query(`ALTER TABLE work_orders MODIFY COLUMN status ENUM('CREATED', 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED') DEFAULT 'CREATED'`);
+            await pool.query(`ALTER TABLE work_orders MODIFY COLUMN status ENUM('CREATED', 'NOT_STARTED', 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED') DEFAULT 'CREATED'`);
         } catch (e) { /* ignore */ }
 
         // Migration: Add targeted_end_date to work_orders

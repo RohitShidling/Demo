@@ -7,6 +7,8 @@ const MachineChecklistModel = require('../models/MachineChecklist');
 const ChecklistService = require('./checklistService');
 const logger = require('../utils/logger');
 
+const WORK_ORDER_STATUSES = ['CREATED', 'NOT_STARTED', 'PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
+
 class WorkOrderService {
     formatRejectionEntry(row) {
         return {
@@ -77,9 +79,29 @@ class WorkOrderService {
         return await this.enrichWorkOrderTotals(wo);
     }
 
-    async updateWorkOrder(work_order_id, updates) {
+    async updateWorkOrder(work_order_id, body) {
         const wo = await WorkOrderModel.findById(work_order_id);
         if (!wo) { const e = new Error('Work order not found'); e.statusCode = 404; throw e; }
+
+        const updates = {};
+        if (body.work_order_name !== undefined) updates.work_order_name = body.work_order_name;
+        if (body.target !== undefined) updates.target = body.target;
+        if (body.description !== undefined) updates.description = body.description;
+        if (body.targeted_end_date !== undefined) updates.targeted_end_date = body.targeted_end_date;
+        if (body.total_produced !== undefined) updates.total_produced = body.total_produced;
+        if (body.total_accepted !== undefined) updates.total_accepted = body.total_accepted;
+        if (body.total_rejected !== undefined) updates.total_rejected = body.total_rejected;
+
+        if (body.status !== undefined) {
+            const s = String(body.status).trim().toUpperCase();
+            if (!WORK_ORDER_STATUSES.includes(s)) {
+                const e = new Error(`Invalid work order status. Allowed: ${WORK_ORDER_STATUSES.join(', ')}`);
+                e.statusCode = 400;
+                throw e;
+            }
+            updates.status = s;
+        }
+
         await WorkOrderModel.update(work_order_id, updates);
         return await this.enrichWorkOrderTotals(await WorkOrderModel.findById(work_order_id));
     }

@@ -55,6 +55,20 @@ class MachineBreakdownModel {
         return rows;
     }
 
+    /** Any breakdown not in RESOLVED state for this machine */
+    static async findOpenByMachine(machine_id) {
+        const pool = getPool();
+        const query = `
+            SELECT mb.*
+            FROM machine_breakdowns mb
+            WHERE mb.machine_id = ? AND mb.status != 'RESOLVED'
+            ORDER BY mb.reported_at DESC
+            LIMIT 1
+        `;
+        const [rows] = await pool.execute(query, [machine_id]);
+        return rows[0] || null;
+    }
+
     static async findActive() {
         const pool = getPool();
         const query = `

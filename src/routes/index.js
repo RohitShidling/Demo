@@ -14,12 +14,6 @@ const productionRoutes = require('./productionRoutes');
 const checklistRoutes = require('./checklistRoutes');
 const dashboardRoutes = require('./dashboardRoutes');
 const notificationRoutes = require('./notificationRoutes');
-const inventoryRoutes = require('./inventoryRoutes');
-const qualityRoutes = require('./qualityRoutes');
-const schedulingRoutes = require('./schedulingRoutes');
-const shiftRoutes = require('./shiftRoutes');
-const auditLogRoutes = require('./auditLogRoutes');
-
 // Business Auth Routes: /api/business/auth/*
 router.use('/business/auth', businessAuthRoutes);
 
@@ -56,21 +50,6 @@ router.use('/dashboard', dashboardRoutes);
 // Notification Routes: /api/notifications/*
 router.use('/notifications', notificationRoutes);
 
-// Inventory Routes: /api/inventory/*
-router.use('/inventory', inventoryRoutes);
-
-// Quality Routes: /api/quality/*
-router.use('/quality', qualityRoutes);
-
-// Scheduling Routes: /api/scheduling/*
-router.use('/scheduling', schedulingRoutes);
-
-// Shift Routes: /api/shifts/*
-router.use('/shifts', shiftRoutes);
-
-// Audit Log Routes: /api/audit-logs/*
-router.use('/audit-logs', auditLogRoutes);
-
 // Health Check (public, no auth required)
 router.get('/health', (req, res) => {
     res.status(200).json({
@@ -99,13 +78,8 @@ router.get('/health', (req, res) => {
             'Machine Production & Rejection Count APIs',
             'Machine Checklist Overview API',
             'Machine Running Status API',
-            'Bar Graph Visualization (Daily & Hourly)',
+            'Bar Graph Visualization (Hourly, Daily & Monthly)',
             'Real-time Socket.IO',
-            'Inventory Management',
-            'Quality Inspection Reports',
-            'Production Scheduling',
-            'Shift Management',
-            'Activity Audit Logs'
         ]
     });
 });

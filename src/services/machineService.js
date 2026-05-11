@@ -25,6 +25,13 @@ class MachineService {
         const machine = await MachineModel.findByIngestPath(normalizedPath);
         if (!machine) throw new Error(`Machine not found for path: ${normalizedPath}`);
 
+        const activeWO = await WorkOrderMachineModel.getActiveWorkOrderForMachine(machine.machine_id);
+        if (!activeWO) {
+            const e = new Error('Machine is not assigned to an active work order. Production ingest is not allowed until the machine is assigned.');
+            e.statusCode = 403;
+            throw e;
+        }
+
         const now = new Date();
         let run = await MachineRunModel.findActiveRun(machine.machine_id);
         if (!run) {
@@ -76,11 +83,15 @@ class MachineService {
         const activeRun = await MachineRunModel.findActiveRun(machine_id);
         const totalRejected = await PartRejectionModel.getTotalRejectedByMachine(machine_id);
 
+        const openBreakdown = await MachineBreakdownModel.findOpenByMachine(machine_id);
+        const baseDash = machine.status || (activeRun ? 'RUNNING' : 'NOT_STARTED');
+        const effectiveDashStatus = openBreakdown ? 'MAINTENANCE' : baseDash;
+
         return {
             machine_id: machine.machine_id, machine_name: machine.machine_name,
             machine_image: machine.machine_image ? machine.machine_image.toString('base64') : null,
             ingest_path: machine.ingest_path,
-            status: machine.status || (activeRun ? 'RUNNING' : 'NOT_STARTED'),
+            status: effectiveDashStatus,
             total_rejected: totalRejected,
             current_run: activeRun ? {
                 start_time: activeRun.start_time, total_count: activeRun.total_count,
@@ -106,17 +117,22 @@ class MachineService {
             let lastRun = activeRun || await MachineRunModel.findLastRun(m.machine_id);
             const totalRejected = await PartRejectionModel.getTotalRejectedByMachine(m.machine_id);
             const activeWO = await WorkOrderMachineModel.getActiveWorkOrderForMachine(m.machine_id);
+            const openBreakdown = await MachineBreakdownModel.findOpenByMachine(m.machine_id);
+            const baseStatus = m.status || (activeRun ? 'RUNNING' : 'NOT_STARTED');
+            const effectiveStatus = openBreakdown ? 'MAINTENANCE' : baseStatus;
 
             return {
                 machine_id: m.machine_id, machine_name: m.machine_name,
                 // Keep list payload small by default to avoid frontend freezes/blank screens.
                 machine_image: includeImages && m.machine_image ? m.machine_image.toString('base64') : null,
                 ingest_path: m.ingest_path,
-                status: m.status || (activeRun ? 'RUNNING' : 'NOT_STARTED'),
+                status: effectiveStatus,
                 total_rejected: totalRejected,
                 active_work_order: activeWO ? activeWO.work_order_id : null,
                 current_run: lastRun ? {
-                    start_time: lastRun.start_time, total_count: lastRun.total_count,
+                    start_time: lastRun.start_time,
+                    total_count: lastRun.total_count,
+                    work_order_id: activeWO ? activeWO.work_order_id : undefined,
                     accepted_count: lastRun.accepted_count || 0, rejected_count: lastRun.rejected_count || 0,
                     end_time: lastRun.end_time, last_activity_time: lastRun.last_activity_time
                 } : null
@@ -142,6 +158,9 @@ class MachineService {
         let rejectedCount = 0;
         let acceptedCount = 0;
         let progressPercentage = 0;
+
+        const openBreakdown = await MachineBreakdownModel.findOpenByMachine(machine_id);
+        const effectiveMachineStatus = openBreakdown ? 'MAINTENANCE' : (machine.status || 'NOT_STARTED');
 
         if (activeWO) {
             const WorkOrderModel = require('../models/WorkOrder');
@@ -178,7 +197,7 @@ class MachineService {
             machine_name: machine.machine_name,
             machine_image: machine.machine_image ? machine.machine_image.toString('base64') : null,
             ingest_path: machine.ingest_path,
-            status: machine.status || 'NOT_STARTED',
+            status: effectiveMachineStatus,
             work_order: workOrderInfo,
             production_target: productionTarget,
             progress_percentage: progressPercentage,
@@ -192,6 +211,7 @@ class MachineService {
                 start_time: lastRun.start_time,
                 end_time: lastRun.end_time,
                 total_count: runTotal,
+                work_order_id: activeWO ? activeWO.work_order_id : undefined,
                 accepted_count: runAccepted,
                 rejected_count: runRejected,
                 last_activity_time: lastRun.last_activity_time,
@@ -226,7 +246,7 @@ class MachineService {
         return { machine_id, machine_name: machine.machine_name, total_rejected_count: total };
     }
 
-    async getMachineVisualization(machine_id, { filter, start_date, end_date, date }) {
+    async getMachineVisualization(machine_id, { filter, start_date, end_date, date, month }) {
         const machine = await MachineModel.findById(machine_id);
         if (!machine) { const e = new Error('Machine not found'); e.statusCode = 404; throw e; }
 
@@ -287,6 +307,62 @@ class MachineService {
                 accepted_count: d.accepted_count || 0,
                 rejected_count: d.rejected_count || 0
             }));
+        }
+
+        // Monthly: `month=YYYY-MM` (defaults to current calendar month in UTC date)
+        if (filter === 'monthly') {
+            const pad = (n) => String(n).padStart(2, '0');
+            const now = new Date();
+            let y = now.getFullYear();
+            let mo = now.getMonth() + 1;
+            const raw = (month && String(month).trim()) || `${y}-${pad(mo)}`;
+            const m = /^(\d{4})-(\d{2})$/.exec(raw);
+            if (!m) {
+                const e = new Error('Invalid month. Use month=YYYY-MM (e.g. 2026-05)');
+                e.statusCode = 400;
+                throw e;
+            }
+            y = parseInt(m[1], 10);
+            mo = parseInt(m[2], 10);
+            if (mo < 1 || mo > 12) {
+                const e = new Error('Invalid month. Use month=YYYY-MM');
+                e.statusCode = 400;
+                throw e;
+            }
+            const startM = `${y}-${pad(mo)}-01`;
+            const lastDay = new Date(y, mo, 0).getDate();
+            const endM = `${y}-${pad(mo)}-${pad(lastDay)}`;
+            const monthRows = await DailyProductionModel.getByMachineAndDateRange(machine_id, startM, endM);
+            const days = [];
+            for (let d = 1; d <= lastDay; d++) {
+                const ds = `${y}-${pad(mo)}-${pad(d)}`;
+                const row = monthRows.find((r) => {
+                    const key = r.production_date instanceof Date
+                        ? r.production_date.toISOString().split('T')[0]
+                        : String(r.production_date).split('T')[0];
+                    return key === ds;
+                });
+                days.push({
+                    date: ds,
+                    day: d,
+                    production_count: row ? (row.total_count || 0) : 0,
+                    accepted_count: row ? (row.accepted_count || 0) : 0,
+                    rejected_count: row ? (row.rejected_count || 0) : 0
+                });
+            }
+            const totalProd = days.reduce((s, x) => s + x.production_count, 0);
+            const totalRej = days.reduce((s, x) => s + x.rejected_count, 0);
+            const totalAcc = days.reduce((s, x) => s + x.accepted_count, 0);
+            data.monthly = {
+                month: `${y}-${pad(mo)}`,
+                month_label: new Date(y, mo - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }),
+                start_date: startM,
+                end_date: endM,
+                days,
+                total_production_count: totalProd,
+                total_rejected_count: totalRej,
+                total_accepted_count: totalAcc
+            };
         }
 
         return { machine_id, machine_name: machine.machine_name, filter: filter || 'all', visualization: data };

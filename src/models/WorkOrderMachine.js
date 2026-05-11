@@ -143,6 +143,17 @@ class WorkOrderMachineModel {
         );
     }
 
+    static async decrementRejectedCount(work_order_id, machine_id, count = 1) {
+        const pool = getPool();
+        await pool.execute(
+            `UPDATE work_order_machines
+             SET rejected_count = GREATEST(0, rejected_count - ?),
+                 accepted_count = GREATEST(0, production_count - GREATEST(0, rejected_count - ?))
+             WHERE work_order_id = ? AND machine_id = ?`,
+            [count, count, work_order_id, machine_id]
+        );
+    }
+
     static async resetCounts(work_order_id, machine_id) {
         const pool = getPool();
         await pool.execute(

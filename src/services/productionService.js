@@ -12,22 +12,40 @@ class ProductionService {
         const machine = await MachineModel.findById(machine_id);
         if (!machine) { const e = new Error('Machine not found'); e.statusCode = 404; throw e; }
 
-        if (work_order_id) {
-            const wo = await WorkOrderModel.findById(work_order_id);
+        const produced = parseInt(produced_count, 10) || 0;
+        const rejected = parseInt(rejected_count, 10) || 0;
+        let activeWO = null;
+        if (produced > 0) {
+            activeWO = await WorkOrderMachineModel.getActiveWorkOrderForMachine(machine_id);
+            if (!activeWO) {
+                const e = new Error('Machine is not assigned to an active work order. Production is not allowed.');
+                e.statusCode = 403;
+                throw e;
+            }
+            if (work_order_id && work_order_id !== activeWO.work_order_id) {
+                const e = new Error('work_order_id does not match the active assignment for this machine');
+                e.statusCode = 400;
+                throw e;
+            }
+        }
+
+        const effectiveWorkOrderId = work_order_id || (activeWO ? activeWO.work_order_id : null);
+        if (effectiveWorkOrderId) {
+            const wo = await WorkOrderModel.findById(effectiveWorkOrderId);
             if (!wo) { const e = new Error('Work order not found'); e.statusCode = 404; throw e; }
         }
 
         const productionId = await ProductionLogModel.create({
             machine_id,
-            work_order_id,
+            work_order_id: effectiveWorkOrderId,
             produced_count: produced_count || 0,
             rejected_count: rejected_count || 0
         });
 
         // Keep work_order_machines counters in sync
-        if (work_order_id) {
-            if (produced_count > 0) await WorkOrderMachineModel.incrementProductionCount(work_order_id, machine_id, produced_count);
-            if (rejected_count > 0) await WorkOrderMachineModel.incrementRejectedCount(work_order_id, machine_id, rejected_count);
+        if (effectiveWorkOrderId) {
+            if (produced > 0) await WorkOrderMachineModel.incrementProductionCount(effectiveWorkOrderId, machine_id, produced);
+            if (rejected > 0) await WorkOrderMachineModel.incrementRejectedCount(effectiveWorkOrderId, machine_id, rejected);
         }
 
         await AuditLogModel.create({
@@ -35,10 +53,10 @@ class ProductionService {
             entity_type: 'production_log',
             entity_id: String(productionId),
             user_id,
-            details: { machine_id, work_order_id, produced_count, rejected_count }
+            details: { machine_id, work_order_id: effectiveWorkOrderId, produced_count, rejected_count }
         });
 
-        logger.info(`Production recorded: machine=${machine_id}, wo=${work_order_id}, produced=${produced_count}, rejected=${rejected_count}`);
+        logger.info(`Production recorded: machine=${machine_id}, wo=${effectiveWorkOrderId}, produced=${produced_count}, rejected=${rejected_count}`);
         return { production_id: productionId };
     }
 
@@ -50,12 +68,9 @@ class ProductionService {
     /**
      * Core aggregate helper — single source of truth for WO production numbers.
      *
-     * Business rules:
-     *   total_produced = last-stage machine's production_count
-     *                    (only parts that completed the ENTIRE pipeline count as "produced")
-     *   total_rejected = SUM of every machine's rejected_count
-     *                    (any rejection anywhere in the line is a WO rejection)
-     *   total_accepted = max(0, total_produced - total_rejected)
+     * total_produced = SUM(production_count) across assigned machines.
+     * total_rejected = SUM(rejected_count) across assigned machines.
+     * total_accepted = max(0, total_produced - total_rejected)
      */
     async _computeWorkOrderTotals(work_order_id) {
         const pool = require('../config/database').getPool();
@@ -72,15 +87,9 @@ class ProductionService {
             return { total_produced: 0, total_rejected: 0, total_accepted: 0, machine_count: 0 };
         }
 
-        // Only the last machine in the pipeline counts as "produced for the work order"
-        const lastMachine = machines[machines.length - 1];
-        const total_produced = parseInt(lastMachine.production_count) || 0;
-
-        // All machines contribute to work-order rejection
-        const total_rejected = machines.reduce(
-            (sum, m) => sum + (parseInt(m.rejected_count) || 0), 0
-        );
-
+        // Production = sum of all assigned machines' production_count; rejection = sum of rejected_count.
+        const total_produced = machines.reduce((sum, m) => sum + (parseInt(m.production_count, 10) || 0), 0);
+        const total_rejected = machines.reduce((sum, m) => sum + (parseInt(m.rejected_count, 10) || 0), 0);
         const total_accepted = Math.max(0, total_produced - total_rejected);
 
         return { total_produced, total_rejected, total_accepted, machine_count: machines.length };
@@ -148,7 +157,7 @@ class ProductionService {
             work_order_id,
             work_order_name: wo.work_order_name,
             machines,
-            _note: 'WO produced = last-stage machine only. WO rejected = sum of all machines.'
+            _note: 'WO produced = sum of all machines production_count. WO rejected = sum of all machines rejected_count. WO accepted = produced − rejected.'
         };
     }
 

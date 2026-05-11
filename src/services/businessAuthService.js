@@ -42,7 +42,7 @@ class BusinessAuthService {
     async requestRegisterOtp({ name, email }) {
         const existingEmail = await BusinessUserModel.findByEmail(email);
         if (existingEmail) {
-            const error = new Error('Email already exists');
+            const error = new Error('This email is already registered as an admin. Please sign in instead.');
             error.statusCode = 409;
             throw error;
         }
@@ -94,15 +94,30 @@ class BusinessAuthService {
         });
 
         const user = await BusinessUserModel.findById(userId);
+        const accessToken = this.generateAccessToken(user);
+        const refreshToken = this.generateRefreshToken(user);
+        await BusinessUserModel.updateRefreshToken(user.id, refreshToken);
+        await BusinessUserModel.updateLastLogin(user.id);
         logger.info(`Business user registered: ${email} (admin)`);
 
-        return { user, message: 'Business user registered successfully' };
+        return {
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                role: 'admin',
+                userType: 'business'
+            },
+            accessToken,
+            refreshToken,
+            message: 'Admin account created. You are now signed in.'
+        };
     }
 
     async requestLoginOtp({ email }) {
         const user = await BusinessUserModel.findByEmail(email);
         if (!user) {
-            const error = new Error('User with this email does not exist');
+            const error = new Error('No admin account found for this email. Please register first.');
             error.statusCode = 401;
             throw error;
         }

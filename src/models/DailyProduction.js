@@ -46,6 +46,15 @@ class DailyProductionModel {
         );
     }
 
+    static async decrementRejected(machine_id, date, count = 1) {
+        const pool = getPool();
+        const productionDate = typeof date === 'string' ? date : date.toISOString().split('T')[0];
+        await pool.execute(
+            `UPDATE daily_production SET rejected_count = GREATEST(0, rejected_count - ?) WHERE machine_id = ? AND production_date = ?`,
+            [count, machine_id, productionDate]
+        );
+    }
+
     static async getByMachineAndDateRange(machine_id, startDate, endDate) {
         const pool = getPool();
         const query = `

@@ -70,6 +70,12 @@ class WorkOrderModel {
         const query = `UPDATE work_orders SET total_rejected = total_rejected + ? WHERE work_order_id = ?`;
         await pool.execute(query, [count, work_order_id]);
     }
+
+    static async decrementRejected(work_order_id, count = 1) {
+        const pool = getPool();
+        const query = `UPDATE work_orders SET total_rejected = GREATEST(0, total_rejected - ?) WHERE work_order_id = ?`;
+        await pool.execute(query, [count, work_order_id]);
+    }
 }
 
 module.exports = WorkOrderModel;

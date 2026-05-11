@@ -58,3 +58,11 @@ exports.getWorkOrderSummary = async (req, res, next) => {
         res.json({ success: true, data });
     } catch (error) { next(error); }
 };
+
+// GET /api/work-orders/:workOrderId/production-metrics
+exports.getWorkOrderProductionMetrics = async (req, res, next) => {
+    try {
+        const data = await ProductionService.getWorkOrderFinalSummary(req.params.workOrderId);
+        res.json({ success: true, data });
+    } catch (error) { next(error); }
+};
