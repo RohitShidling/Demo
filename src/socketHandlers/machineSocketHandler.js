@@ -166,15 +166,111 @@ module.exports = (io) => {
         // ── OPERATOR: Report Rejection ──
         socket.on('operator:reportRejection', async (data, cb) => {
             try {
-                const { machine_id, work_order_id, rejection_reason, part_image, rejected_count } = data || {};
+                const { machine_id, work_order_id, rejection_reason, part_description, rework_reason, supervisor_name, part_image, rejected_count } = data || {};
                 if (!machine_id || !rejection_reason) return emitError(socket, cb, { message: 'machine_id and rejection_reason required' });
                 const imgBuf = part_image ? Buffer.from(part_image, 'base64') : null;
                 const result = await OperatorService.reportRejection({
                     machine_id, work_order_id, operator_id: socket.user.id,
-                    rejection_reason, part_image: imgBuf, rejected_count: rejected_count || 1
+                    rejection_reason, part_description, rework_reason, supervisor_name, part_image: imgBuf, rejected_count: rejected_count || 1
                 });
                 if (typeof cb === 'function') cb({ success: true, data: result });
-                ns.emit('rejection:reported', { machine_id, work_order_id, operator: socket.user.username, timestamp: new Date().toISOString() });
+                
+                // Broadcast full rejection details to all clients
+                const rejectionData = {
+                    id: result.id,
+                    machine_id,
+                    work_order_id,
+                    rejection_reason,
+                    part_description,
+                    rework_reason,
+                    supervisor_name,
+                    rejected_count: rejected_count || 1,
+                    operator_id: socket.user.id,
+                    operator_name: socket.user.username,
+                    has_image: !!imgBuf,
+                    created_at: result.created_at,
+                    timestamp: new Date().toISOString()
+                };
+                
+                // Emit to all connected clients
+                ns.emit('rejection:new', rejectionData);
+                
+                // Also emit to specific machine room
+                ns.to(`machine:${machine_id}`).emit('rejection:new', rejectionData);
+                
+                // If work order is specified, also emit to work order room
+                if (work_order_id) {
+                    ns.to(`workorder:${work_order_id}`).emit('rejection:new', rejectionData);
+                }
+            } catch (e) { emitError(socket, cb, e); }
+        });
+
+        // ── REJECTIONS: Fetch All Rejections ──
+        socket.on('rejection:getAll', async (data, cb) => {
+            try {
+                const rejections = await OperatorService.getAllRejections();
+                const res = { success: true, data: rejections };
+                if (typeof cb === 'function') cb(res);
+                socket.emit('rejection:allRejections', res);
+            } catch (e) { emitError(socket, cb, e); }
+        });
+
+        // ── REJECTIONS: Fetch Rejections by Machine ──
+        socket.on('rejection:getByMachine', async (data, cb) => {
+            try {
+                const { machine_id } = data || {};
+                if (!machine_id) return emitError(socket, cb, { message: 'machine_id required' });
+                const rejections = await OperatorService.getRejectionsByMachine(machine_id);
+                const res = { success: true, data: rejections };
+                if (typeof cb === 'function') cb(res);
+                socket.emit('rejection:machineRejections', res);
+            } catch (e) { emitError(socket, cb, e); }
+        });
+
+        // ── REJECTIONS: Fetch Rejections by Work Order ──
+        socket.on('rejection:getByWorkOrder', async (data, cb) => {
+            try {
+                const { work_order_id } = data || {};
+                if (!work_order_id) return emitError(socket, cb, { message: 'work_order_id required' });
+                const rejections = await OperatorService.getRejectionsByWorkOrder(work_order_id);
+                const res = { success: true, data: rejections };
+                if (typeof cb === 'function') cb(res);
+                socket.emit('rejection:workOrderRejections', res);
+            } catch (e) { emitError(socket, cb, e); }
+        });
+
+        // ── REJECTIONS: Fetch Rework Pending ──
+        socket.on('rejection:getPendingRework', async (data, cb) => {
+            try {
+                const { machine_id } = data || {};
+                if (!machine_id) return emitError(socket, cb, { message: 'machine_id required' });
+                const rejections = await OperatorService.getPendingReworkByMachine(machine_id);
+                const res = { success: true, data: rejections };
+                if (typeof cb === 'function') cb(res);
+                socket.emit('rejection:pendingRework', res);
+            } catch (e) { emitError(socket, cb, e); }
+        });
+
+        // ── REJECTIONS: Mark Rework Completed ──
+        socket.on('rejection:markReworkCompleted', async (data, cb) => {
+            try {
+                const { rejection_id, rework_reason, rework_comments } = data || {};
+                if (!rejection_id) return emitError(socket, cb, { message: 'rejection_id required' });
+                const result = await OperatorService.markReworkCompleted(rejection_id, {
+                    rework_reason,
+                    rework_comments,
+                    reworked_by: socket.user.username
+                });
+                if (typeof cb === 'function') cb({ success: true, data: result });
+                
+                // Broadcast rework completion to all clients
+                ns.emit('rejection:reworkCompleted', {
+                    rejection_id,
+                    rework_reason,
+                    rework_comments,
+                    reworked_by: socket.user.username,
+                    timestamp: new Date().toISOString()
+                });
             } catch (e) { emitError(socket, cb, e); }
         });
 
@@ -330,6 +426,35 @@ module.exports = (io) => {
             if (workOrderId) {
                 socket.join(`workorder:${workOrderId}`);
                 socket.emit('workorder:subscribed', { workOrderId });
+            }
+        });
+
+        // ── REJECTION SUBSCRIPTIONS ──
+        socket.on('rejection:subscribe', (data) => {
+            const { type, id } = data || {};
+            if (type === 'machine' && id) {
+                socket.join(`rejection:machine:${id}`);
+                socket.emit('rejection:subscribed', { type: 'machine', id });
+            } else if (type === 'workorder' && id) {
+                socket.join(`rejection:workorder:${id}`);
+                socket.emit('rejection:subscribed', { type: 'workorder', id });
+            } else if (type === 'all') {
+                socket.join('rejection:all');
+                socket.emit('rejection:subscribed', { type: 'all' });
+            }
+        });
+
+        socket.on('rejection:unsubscribe', (data) => {
+            const { type, id } = data || {};
+            if (type === 'machine' && id) {
+                socket.leave(`rejection:machine:${id}`);
+                socket.emit('rejection:unsubscribed', { type: 'machine', id });
+            } else if (type === 'workorder' && id) {
+                socket.leave(`rejection:workorder:${id}`);
+                socket.emit('rejection:unsubscribed', { type: 'workorder', id });
+            } else if (type === 'all') {
+                socket.leave('rejection:all');
+                socket.emit('rejection:unsubscribed', { type: 'all' });
             }
         });
 

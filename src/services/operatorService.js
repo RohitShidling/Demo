@@ -129,6 +129,10 @@ class OperatorService {
         return await PartRejectionModel.findByMachine(machine_id);
     }
 
+    async getRejectionsByWorkOrder(work_order_id) {
+        return await PartRejectionModel.findByWorkOrder(work_order_id);
+    }
+
     async getAllRejections() {
         return await PartRejectionModel.findAll();
     }
